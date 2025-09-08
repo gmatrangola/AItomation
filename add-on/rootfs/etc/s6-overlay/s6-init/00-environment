@@ -1,0 +1,6 @@
+# add-on/rootfs/etc/s6-overlay/s6-init/00-environment
+# This file ensures SUPERVISOR_TOKEN is explicitly set as an environment variable
+# It is often already available, but this makes it explicit.
+if [ -f "/var/run/s6/container_environment/SUPERVISOR_TOKEN" ]; then
+    export SUPERVISOR_TOKEN=$(cat /var/run/s6/container_environment/SUPERVISOR_TOKEN)
+fi

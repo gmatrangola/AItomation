@@ -1,0 +1,6 @@
+# requirements.txt
+Flask==3.0.3
+Flask-Cors==4.0.1
+requests==2.32.3 # For making API calls to HA and LLMs
+PyYAML==6.0.1 # For parsing/generating YAML automations
+gunicorn==22.0.0 # Production-ready WSGI HTTP server

@@ -1,0 +1,24 @@
+{
+    "name": "aitomation",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite --host",
+        "build": "vue-tsc && vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "@mdi/font": "^7.4.47",
+        "roboto-fontface": "*",
+        "vue": "^3.4.21",
+        "vuetify": "^3.5.17"
+    },
+    "devDependencies": {
+        "@types/node": "^20.12.7",
+        "@vitejs/plugin-vue": "^5.0.4",
+        "typescript": "^5.2.2",
+        "vite": "^5.2.0",
+        "vue-tsc": "^2.0.6"
+    }
+}

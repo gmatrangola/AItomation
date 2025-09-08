@@ -1,0 +1,37 @@
+{
+    "name": "AItomations",
+    "version": "0.1.0",
+    "slug": "aitomations",
+    "description": "Create Home Assistant automations using LLMs like Gemini or Ollama.",
+    "url": "https://github.com/glmatra/aitomations",
+    "startup": "application",
+    "arch": ["aarch64", "amd64", "armhf", "armv7", "i386"],
+    "ports": {
+        "8099/tcp": null
+    },
+    "ports_description": {
+        "8099/tcp": "Web interface for LLM Automation Creator"
+    },
+    "ingress": true,
+    "panel_icon": "mdi:robot",
+    "options": {
+        "ollama_api_url": "http://ollama:11434/api/generate",
+        "ollama_model": "llama3",
+        "gemini_api_key": "",
+        "gemini_model": "gemini-pro"
+    },
+    "schema": {
+        "ollama_api_url": "str?",
+        "ollama_model": "str?",
+        "gemini_api_key": "str?",
+        "gemini_model": "str?",
+        "llm_provider": {
+            "type": "select",
+            "options": ["ollama", "gemini"],
+            "default": "ollama"
+        }
+    },
+    "auth_api": true,
+    "host_network": true,
+    "web_ui": "/ingress/"
+}
