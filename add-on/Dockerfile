@@ -1,55 +1,69 @@
-# add-on/Dockerfile
+# syntax=docker/dockerfile:1
+
+# Declare BUILD_FROM globally, before any FROM statements.
 ARG BUILD_FROM
-FROM $BUILD_FROM
 
-# Set environment variables for non-interactive installs
-ENV DEBIAN_FRONTEND=noninteractive
+# --- Builder Stage ---
+# This stage builds the Vue frontend
+# We use a standard node image and install pnpm to ensure cache invalidation.
+FROM node:20-alpine AS builder
 
-# Install Python and Node.js dependencies for the add-on
-# This is a minimal set. Add any other system dependencies needed by your Python packages.
-RUN apt-get update && apt-get install -y \
+# Install pnpm
+RUN npm install -g pnpm
+
+WORKDIR /usr/src/app
+
+# Copy only the necessary package manager files
+COPY src/frontend/package.json src/frontend/pnpm-lock.yaml ./
+
+# Install dependencies. This step is cached as long as lock file doesn't change.
+RUN pnpm install --reporter=append-only
+
+# Copy the rest of the frontend source code
+COPY src/frontend/ ./
+
+# Build the static assets
+RUN pnpm build
+
+
+# --- Final Stage ---
+# This stage builds the final, lean add-on image
+FROM ${BUILD_FROM}
+
+WORKDIR /usr/src/app
+
+# Install system dependencies for the Python backend
+RUN apk add --no-cache \
     python3 \
-    python3-pip \
-    nodejs \
-    npm \
-    git \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    py3-pip
 
-# Copy Python requirements and install them
-COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+# Copy the requirements file first to leverage Docker cache
+COPY requirements.txt ./
 
-# Copy add-on scripts and rootfs
-COPY run.sh /
+# Copy Python dependencies and install them
+RUN pip3 install \
+    --no-cache-dir \
+    --break-system-packages \
+    -r requirements.txt
+
+# Copy the Python backend source code
+COPY src/backend/ ./backend/
+
+# Copy the pre-built frontend from the 'builder' stage
+COPY --from=builder /usr/src/app/dist ./backend/dist
+
+# Create the service directory and copy the run script
+RUN mkdir -p /etc/services.d/aitomations
+COPY run.sh /etc/services.d/aitomations/run
+RUN chmod +x /etc/services.d/aitomations/run
+
+# Copy rootfs contents
 COPY rootfs/ /
 
-# Set up working directory for frontend build
-WORKDIR /app/frontend
+# Set the current working directory to the backend
+WORKDIR /usr/src/app/backend
 
-# Copy frontend source and build it
-COPY src/frontend/package.json src/frontend/package-lock.json ./
-RUN npm install --production=false # Install dev dependencies for build
-COPY src/frontend/ .
-RUN npm run build # Build the Vue app
-
-# Move the built frontend to the backend's static directory
-RUN mv dist /app/backend/static
-
-# Clean up npm cache and dev dependencies
-RUN npm cache clean --force && rm -rf node_modules
-
-# Set working directory for backend
-WORKDIR /app/backend
-
-# Copy backend source
-COPY src/backend/ .
-
-# Ensure run.sh is executable
-RUN chmod +x /run.sh
-
-# Expose port (as defined in config.json)
+# Expose the port the backend will run on
 EXPOSE 8099
 
-# Command to run the add-on
-CMD ["/run.sh"]
+# The base image already has the correct ENTRYPOINT set up

@@ -1,63 +1,95 @@
 <template>
-    <v-card variant="outlined" class="mb-4">
-        <v-card-text>
-            <div class="text-subtitle-1 font-weight-bold mb-2">Summary:</div>
-            <p class="text-body-1 mb-4">{{ automation.summary }}</p>
+    <div>
+        <!-- Summary -->
+        <v-alert type="success" variant="tonal" class="mb-4">
+            <v-alert-title>
+                <v-icon class="mr-2">mdi-lightbulb-on</v-icon>
+                What this automation does:
+            </v-alert-title>
+            {{ automation.summary }}
+        </v-alert>
 
-            <v-divider class="my-4"></v-divider>
+        <!-- YAML Code -->
+        <v-card variant="outlined" class="mb-4">
+            <v-card-title class="text-h6">
+                <v-icon class="mr-2">mdi-code-braces</v-icon>
+                Automation YAML
+                <v-spacer />
+                <v-btn @click="copyToClipboard" variant="text" size="small" :color="copied ? 'success' : 'primary'">
+                    <v-icon>{{ copied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+                    {{ copied ? 'Copied!' : 'Copy' }}
+                </v-btn>
+            </v-card-title>
 
-            <div class="text-subtitle-1 font-weight-bold mb-2">Automation YAML:</div>
-            <v-textarea :model-value="automation.yaml" label="Generated YAML" variant="solo-filled" rows="15" readonly
-                auto-grow density="compact" class="generated-yaml"></v-textarea>
-            <v-btn small color="primary" @click="copyYamlToClipboard" prepend-icon="mdi-content-copy" class="mt-2">
-                Copy YAML
+            <v-card-text>
+                <pre class="yaml-code">{{ automation.yaml }}</pre>
+            </v-card-text>
+        </v-card>
+
+        <!-- Action Buttons -->
+        <div class="d-flex gap-3">
+            <v-btn @click="$emit('install')" :loading="installing" color="success" size="large" variant="elevated">
+                <v-icon left>mdi-download</v-icon>
+                Install in Home Assistant
             </v-btn>
-            <v-snackbar v-model="snackbar" :timeout="2000">
-                YAML copied to clipboard!
-                <template v-slot:actions>
-                    <v-btn color="blue" variant="text" @click="snackbar = false">
-                        Close
-                    </v-btn>
-                </template>
-            </v-snackbar>
-        </v-card-text>
-    </v-card>
+
+            <v-btn @click="$emit('modify')" :loading="modifying" color="primary" size="large" variant="outlined">
+                <v-icon left>mdi-pencil</v-icon>
+                Modify
+            </v-btn>
+        </div>
+    </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref } from 'vue'
 
-const props = defineProps<{
-    automation: {
-        summary: string;
-        yaml: string;
-    };
-}>();
+interface AutomationResponse {
+    summary: string
+    yaml: string
+}
 
-const snackbar = ref(false);
+defineProps<{
+    automation: AutomationResponse
+    installing: boolean
+    modifying: boolean
+}>()
 
-const copyYamlToClipboard = () => {
-    // document.execCommand('copy') is used due to potential iframe restrictions
-    // on navigator.clipboard.writeText() in some environments.
-    const textarea = document.createElement('textarea');
-    textarea.value = props.automation.yaml;
-    document.body.appendChild(textarea);
-    textarea.select();
+defineEmits<{
+    install: []
+    modify: []
+}>()
+
+const copied = ref(false)
+
+async function copyToClipboard() {
     try {
-        document.execCommand('copy');
-        snackbar.value = true;
-    } catch (err) {
-        console.error('Failed to copy YAML to clipboard:', err);
-        // Fallback or user notification
+        await navigator.clipboard.writeText(props.automation.yaml)
+        copied.value = true
+        setTimeout(() => {
+            copied.value = false
+        }, 2000)
+    } catch (error) {
+        console.error('Failed to copy to clipboard:', error)
     }
-    document.body.removeChild(textarea);
-};
+}
 </script>
 
 <style scoped>
-.generated-yaml :deep(textarea) {
-    font-family: 'Roboto Mono', monospace !important;
-    /* Monospace font for code */
-    font-size: 0.875rem !important;
+.yaml-code {
+    background-color: #f5f5f5;
+    padding: 16px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.v-theme--dark .yaml-code {
+    background-color: #2d2d2d;
+    color: #f8f8f2;
 }
 </style>

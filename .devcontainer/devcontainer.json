@@ -1,18 +1,20 @@
 {
-    "name": "HA LLM Automation Add-on Dev",
+    "name": "Python 3 & Node.js",
     "build": {
         "dockerfile": "Dockerfile",
         "context": ".."
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/docker-from-docker:1": {}
     },
     "customizations": {
         "vscode": {
             "extensions": [
                 "ms-python.python",
+                "ms-python.debugpy",
+                "ms-toolsai.jupyter",
                 "dbaeumer.vscode-eslint",
-                "Vue.volar",
-                "esbenp.prettier-vscode",
-                "formulahendry.auto-rename-tag",
-                "aaron-bond.better-comments"
+                "vue.volar"
             ],
             "settings": {
                 "python.pythonPath": "/usr/local/bin/python",
@@ -25,16 +27,31 @@
                     "editor.defaultFormatter": "Vue.volar"
                 },
                 "prettier.enable": true,
-                "prettier.configPath": ".prettierrc.json"
+                "prettier.configPath": ".prettierrc.json",
+                "remote.autoForwardPorts": false,
+                "remote.restoreForwardedPorts": false,
+                "portsAttributes": {
+                    "*": {
+                        "onAutoForward": "ignore"
+                    }
+                }
             }
         }
     },
     "mounts": [
-        "source=${localWorkspaceFolderBasename}-bashhistory,target=/home/vscode/.bash_history,type=volume"
+        "source=${localWorkspaceFolderBasename}-bashhistory,target=/home/vscode/commandhistory,type=volume",
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
     ],
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
     "workspaceFolder": "/workspace",
-    "postCreateCommand": "cd add-on/src/frontend && pnpm install",
+    "postCreateCommand": "sudo chown vscode /home/vscode/commandhistory && echo \"export PROMPT_COMMAND='history -a' && export HISTFILE=/home/vscode/commandhistory/.bash_history\" >> /home/vscode/.bashrc && echo \"alias ssh='ssh -o IgnoreUnknown=UseKeychain'\" >> /home/vscode/.bashrc && echo \"alias scp='scp -o IgnoreUnknown=UseKeychain'\" >> /home/vscode/.bashrc && echo \"alias rsync=\\\"rsync -e 'ssh -o IgnoreUnknown=UseKeychain'\\\"\" >> /home/vscode/.bashrc && echo 'if [ -z \"$SSH_AUTH_SOCK\" ]; then eval \"$(ssh-agent -s)\"; ssh-add ~/.ssh/id_rsa; fi' >> /home/vscode/.bashrc && cd add-on/src/frontend && pnpm install",
     "remoteUser": "vscode",
-    "forwardPorts": [8099, 5173],
+    "forwardPorts": [
+        8099,
+        5173
+    ],
+    // Add this block to pass the host path into the container
+    "remoteEnv": {
+        "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
+    }
 }

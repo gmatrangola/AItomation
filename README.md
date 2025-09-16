@@ -163,30 +163,67 @@ You can now set breakpoints in your .py files and your .vue files, and the debug
 
 ## **Testing in Home Assistant**
 
-To see your add-on working in a real Home Assistant environment:
+To test your add-on with the full installation experience, you must run it in a proper **Home Assistant OS** environment. The recommended method for macOS is running HA OS in a virtual machine.
 
-### **1\. Access Home Assistant's Filesystem**
+### **1. Set Up a Home Assistant OS Virtual Machine**
 
-You need a way to copy your add-on files into your Home Assistant instance. The easiest method is to install the **Samba share** add-on or the **Visual Studio Code** add-on from the official add-on store, which give you access to the HA configuration folders.
+The standard `docker` and `docker-compose` methods install **Home Assistant Core**, which does **not** include the Supervisor or the Add-on Store.
 
-### **2\. Copy the Add-on**
+*Note: We recommend using UTM instead of VirtualBox because UTM supports both Apple Silicon (M1/M2/M3) and Intel-based Macs, providing a single set of instructions for all developers.*
 
-1. Connect to your Home Assistant filesystem (e.g., via Samba).  
-2. Navigate to the root directory where you see config, ssl, share, etc.  
-3. Find the addons directory. If it doesn't exist, create it.  
-4. Copy your local **add-on** folder (the one containing config.json, run.sh, etc.) into the /addons directory.
+1.  **Install UTM:** Download and install [UTM](https://mac.getutm.app/), a free virtual machine application for macOS.
+2.  **Download Home Assistant OS:** Go to the [official releases page](https://github.com/home-assistant/operating-system/releases) and download the `.qcow2.xz` image for your Mac's architecture. This is a compressed file.
+    *   **Apple Silicon (M1/M2/M3):** `haos_generic-aarch64-XX.X.qcow2.xz`
+    *   **Intel:** `haos_ova-XX.X.qcow2.xz`
+    *   After downloading, decompress the file to get the `.qcow2` disk image. On macOS, you can usually just double-click the `.xz` file in Finder to extract it.
+3.  **Create the VM in UTM:**
+    *   Open UTM and click **+** to create a new machine.
+    *   Select **Virtualize**, then **Linux**.
+    *   Click **Browse** next to "Boot ISO Image" and select the `.qcow2` file you just unzipped. Click **Continue**.
+    *   Accept the default settings for memory and storage (4GB RAM is a good start).
+    *   On the final "Summary" screen, check the box for **"Open VM Settings"** and click **Save**.
+4.  **Correct the Drives:**
+    *   The VM settings will open automatically. Go to the **Drives** section on the left.
+    *   You will see two drives. Select the one that is **NOT** your `haos...qcow2` image (it will likely be named `virtio-drive-0` or similar) and click the **Delete** button.
+    *   You should now have only one drive left. Click **Save**.
+5.  **Start and Configure:**
+    *   Start the VM from the main UTM window.
+    *   Wait for it to boot. It can take several minutes. The console will eventually show network information and a welcome banner.
+    *   Navigate to `http://homeassistant.local:8123` in your browser to complete the setup. If that doesn't work, use the IP address shown in the UTM console window (e.g., `http://192.168.1.123:8123`).
+    *   **Note:** If you already have a Home Assistant instance on your network, you should change the hostname of this new test instance to avoid conflicts. You can do this after setup by going to **Settings > System > Network** and changing the "Hostname". For example, changing it to `ha-dev` will make it accessible at `http://ha-dev.local:8123`.
 
-The final path inside Home Assistant should be /addons/add-on.
+#### **Expanding the Virtual Disk Size (Optional)**
 
-### **3\. Install and Configure the Add-on**
+If you need more than the default 32GB of storage for your test instance, you can expand the virtual disk.
 
-1. In Home Assistant, go to **Settings \-\> Add-ons \-\> Add-on Store**.  
-2. Click the three-dots menu at the top right and select **Check for updates**.  
-3. After a few moments, a new section called "Local add-ons" should appear, containing your **AItomations** add-on.  
-4. Click on the add-on and click **Install**.  
-5. Once installed, go to the **Configuration** tab and enter your LLM provider details (e.g., your Gemini API Key or the URL for your Ollama instance). Click **Save**.  
-6. Go back to the **Info** tab, start the add-on, and check the **Log** tab to ensure there are no errors.  
-7. If the add-on starts successfully, you can click **Open Web UI** to access the interface through Ingress.
+1.  **Shut down the VM** in UTM.
+2.  **Right-click** the VM and select **Edit**.
+3.  Go to the **Drives** tab.
+4.  Select the main `haos...` drive.
+5.  Change the **Size (GB)** to a larger value (e.g., 64).
+6.  **Save** the settings and restart the VM. Home Assistant OS will automatically resize its data partition on the next boot.
+
+### **2. Add Your Local Add-on Repository**
+
+To get your add-on into your new Home Assistant VM, you need to serve your local files over the network.
+
+1.  **Start a Web Server:** In your VS Code terminal, serve your project directory:
+    ```bash
+    python3 -m http.server 8080
+    ```
+2.  **Add Repository to Home Assistant:**
+    *   In your Home Assistant UI, go to **Settings > Add-ons > Add-on Store**.
+    *   Click the three-dots menu and select **Repositories**.
+    *   Enter the following URL and click **Add**: `http://host.docker.internal:8080`
+    *   *Note: `host.docker.internal` is a special DNS name that resolves to the host machine (your Mac) from within Docker containers, which is how Home Assistant OS runs its components.*
+
+### **3. Install and Configure the Add-on**
+
+1.  Close the repository dialog. A new "Local add-ons" section will appear in the store.
+2.  Find your **AItomations** add-on and click **Install**.
+3.  Once installed, go to the **Configuration** tab to set up your API keys.
+4.  Go to the **Info** tab, start the add-on, and check the **Log** tab for errors.
+5.  Click **Open Web UI** to access your add-on's interface.
 
 ## **Project Structure**
 
@@ -200,3 +237,26 @@ The final path inside Home Assistant should be /addons/add-on.
 │       ├── backend/   \# Python Flask server  
 │       └── frontend/  \# Vue 3 \+ Vuetify user interface  
 └── requirements.txt   \# Python dependencies  
+
+
+# Run in the Home Assistant Test Container
+
+The Test container runs on docker on the development box (laptop)
+
+```bash
+docker config up -d
+```
+
+Shutdown:
+
+```bash
+docker config down
+```
+
+Connect with
+```
+"$BROWSER" http://localhost:8123
+```
+
+User admin
+Pasword: `Adminpassword-123`

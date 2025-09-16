@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    ports:
+      - "8123:8123"
+    volumes:
+      # Use the environment variable for the host path
+      - ${LOCAL_WORKSPACE_FOLDER}/ha-config:/config
+    restart: unless-stopped

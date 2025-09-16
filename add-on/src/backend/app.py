@@ -1,237 +1,336 @@
 import os
-import requests
 import json
-import yaml
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, jsonify, request, Response, send_from_directory
+from flask_cors import CORS
+import requests
+import google.generativeai as genai
 
-# This is a critical security step for add-ons.
-# The SUPERVISOR_TOKEN is provided by the Home Assistant Supervisor.
-SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN')
-if not SUPERVISOR_TOKEN:
-    # Fallback for local development
-    print("WARNING: SUPERVISOR_TOKEN not found. Using a dummy token for local dev.")
-    SUPERVISOR_TOKEN = "dummy_token"
+app = Flask(__name__)
+CORS(app)
 
-# Retrieve add-on configuration from environment variables
-LLM_PROVIDER = os.environ.get('LLM_PROVIDER')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-OLLAMA_API_URL = os.environ.get('OLLAMA_API_URL')
-# The HOST_IP is available via the S6 overlay environment variables if host_network is enabled
-HOST_IP = os.environ.get('HOST_IP', 'localhost')
+# Path to the options file in a Home Assistant add-on
+OPTIONS_FILE = '/data/options.json'
 
-app = Flask(__name__, static_folder='static', static_url_path='/')
+# Path to the built Vue.js frontend
+STATIC_DIR = os.path.join(os.path.dirname(__file__), 'dist')
+
+def get_options():
+    """Read options from the JSON file."""
+    try:
+        with open(OPTIONS_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Return default structure if file doesn't exist or is empty/corrupt
+        return {
+            'ollama_api_url': 'http://ollama:11434/api/generate',
+            'ollama_model': 'llama3',
+            'gemini_api_key': '',
+            'gemini_model': 'gemini-pro',
+            'llm_provider': 'ollama'
+        }
+
+# ============================================================================
+# FRONTEND ROUTES - Serve Vue.js application
+# ============================================================================
 
 @app.route('/')
-def serve_index():
-    """Serves the main frontend application."""
-    return send_from_directory(app.static_folder, 'index.html')
+def index():
+    """Serve the main Vue.js application"""
+    try:
+        index_path = os.path.join(STATIC_DIR, 'index.html')
+        if os.path.exists(index_path):
+            print(f"[INFO] Serving index.html from {index_path}")
+            return send_from_directory(STATIC_DIR, 'index.html')
+        else:
+            return jsonify({
+                'error': 'Frontend not found',
+                'static_dir': STATIC_DIR,
+                'index_exists': os.path.exists(index_path),
+                'available_files': os.listdir(os.path.dirname(__file__)) if os.path.exists(os.path.dirname(__file__)) else []
+            }), 404
+    except Exception as e:
+        print(f"[ERROR] Error serving index: {str(e)}")
+        return f"Error serving index: {str(e)}", 500
+
+@app.route('/assets/<path:filename>')
+def serve_assets(filename):
+    """Serve Vue.js assets (CSS, JS, etc.)"""
+    try:
+        assets_dir = os.path.join(STATIC_DIR, 'assets')
+        file_path = os.path.join(assets_dir, filename)
+        
+        print(f"[INFO] Requested asset: {filename}")
+        print(f"[INFO] Looking in: {assets_dir}")
+        print(f"[INFO] Full path: {file_path}")
+        print(f"[INFO] File exists: {os.path.exists(file_path)}")
+        
+        if os.path.exists(file_path):
+            return send_from_directory(assets_dir, filename)
+        else:
+            print(f"[ERROR] Asset not found: {filename}")
+            # List available assets for debugging
+            if os.path.exists(assets_dir):
+                available = os.listdir(assets_dir)
+                print(f"[INFO] Available assets: {available}")
+            return f"Asset not found: {filename}", 404
+    except Exception as e:
+        print(f"[ERROR] Error serving asset {filename}: {str(e)}")
+        return f"Error serving asset: {str(e)}", 500
+
+@app.route('/vite.svg')
+def serve_vite_svg():
+    """Serve the Vite favicon"""
+    vite_svg_path = os.path.join(STATIC_DIR, 'vite.svg')
+    if os.path.exists(vite_svg_path):
+        return send_from_directory(STATIC_DIR, 'vite.svg')
+    return "Favicon not found", 404
 
 @app.route('/<path:path>')
-def serve_static(path):
-    """Serves static assets like CSS and JS files."""
-    return send_from_directory(app.static_folder, path)
-
-def get_ha_data(endpoint):
-    """
-    Fetches data from a specific Home Assistant API endpoint using the
-    Supervisor token for authentication.
-    """
-    url = f"http://supervisor/core/api/{endpoint}"
-    headers = {
-        "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
-        "Content-Type": "application/json"
-    }
+def serve_static_or_spa(path):
+    """Serve static files or handle SPA routing"""
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching data from HA API at {url}: {e}")
-        return None
+        # First try to serve as a static file
+        file_path = os.path.join(STATIC_DIR, path)
+        if os.path.exists(file_path):
+            return send_from_directory(STATIC_DIR, path)
+        
+        # If it's not a file and doesn't have an extension, treat as SPA route
+        if '.' not in path and os.path.exists(os.path.join(STATIC_DIR, 'index.html')):
+            return send_from_directory(STATIC_DIR, 'index.html')
+        
+        # File not found
+        print(f"[ERROR] File not found: {path}")
+        return f"File not found: {path}", 404
+    except Exception as e:
+        print(f"[ERROR] Error serving static file {path}: {str(e)}")
+        return f"Error serving static file: {str(e)}", 500
 
-def format_ha_config_for_llm():
-    """
-    Fetches a summary of Home Assistant entities, automations, and scenes
-    and formats it into a string for the LLM prompt.
-    """
-    entity_data = get_ha_data("states")
-    automation_data = get_ha_data("automations")
-    scene_data = get_ha_data("scenes")
+# ============================================================================
+# API ROUTES - Backend functionality (matching your Vue.js frontend)
+# ============================================================================
 
-    ha_config = "Home Assistant Configuration:\n\n"
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint"""
+    backend_files = []
+    dist_files = []
+    assets_files = []
     
-    if entity_data:
-        ha_config += "Entities:\n"
-        for entity in entity_data:
-            state = entity.get('state', 'unknown')
-            attributes = entity.get('attributes', {})
-            friendly_name = attributes.get('friendly_name', entity['entity_id'])
-            ha_config += f" - {friendly_name} ({entity['entity_id']}): state is '{state}'"
-            if 'unit_of_measurement' in attributes:
-                ha_config += f" {attributes['unit_of_measurement']}"
-            ha_config += "\n"
+    try:
+        backend_files = os.listdir('/usr/src/app/backend/')
+    except Exception as e:
+        backend_files = [f"Error: {str(e)}"]
+    
+    try:
+        if os.path.exists(STATIC_DIR):
+            dist_files = os.listdir(STATIC_DIR)
+    except Exception as e:
+        dist_files = [f"Error: {str(e)}"]
+        
+    try:
+        assets_dir = os.path.join(STATIC_DIR, 'assets')
+        if os.path.exists(assets_dir):
+            assets_files = os.listdir(assets_dir)
+    except Exception as e:
+        assets_files = [f"Error: {str(e)}"]
+    
+    return jsonify({
+        'status': 'healthy',
+        'frontend_available': os.path.exists(os.path.join(STATIC_DIR, 'index.html')),
+        'static_dir': STATIC_DIR,
+        'backend_files': backend_files,
+        'dist_files': dist_files,
+        'assets_files': assets_files,
+        'working_directory': os.getcwd()
+    })
 
-    if automation_data:
-        ha_config += "\nExisting Automations:\n"
-        for auto in automation_data:
-            ha_config += f" - {auto.get('alias', auto['id'])}\n"
-    
-    if scene_data:
-        ha_config += "\nExisting Scenes:\n"
-        for scene in scene_data:
-            ha_config += f" - {scene.get('name', scene['id'])}\n"
-            
-    return ha_config
-
-def call_ollama(prompt, ha_context):
-    """Calls the Ollama LLM to generate an automation."""
-    if not OLLAMA_API_URL:
-        raise ValueError("OLLAMA_API_URL not configured.")
-    
-    full_prompt = (
-        f"You are a helpful assistant for creating Home Assistant automations. "
-        f"Based on the following Home Assistant configuration and user prompt, "
-        f"generate a Home Assistant automation in YAML format. The YAML must "
-        f"be a single YAML document. Do not include any YAML headers or footers, "
-        f"just the automation content. Also, provide a brief, single-sentence summary of the automation. "
-        f"The response MUST be a valid JSON object with a 'summary' key and a 'yaml' key. "
-        f"Use single quotes for the summary value and triple quotes for the yaml value. "
-        f"Example format: {{'summary': 'A brief summary of the automation.', 'yaml': '...automation yaml...'}}\n\n"
-        f"Home Assistant Configuration:\n{ha_context}\n\n"
-        f"User Prompt:\n{prompt}"
-    )
-    
-    payload = {
-        "model": "llama3",  # Assuming a capable model is available
-        "prompt": full_prompt,
-        "stream": False,
-        "format": "json"
-    }
-    
-    response = requests.post(OLLAMA_API_URL, json=payload)
-    response.raise_for_status()
-    result = response.json()
-    
-    # Ollama's response format can vary, so we extract the generated content
-    return json.loads(result.get('response'))
-
-def call_gemini(prompt, ha_context):
-    """Calls the Gemini LLM to generate an automation."""
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY not configured.")
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
-    
-    full_prompt = (
-        f"You are a helpful assistant for creating Home Assistant automations. "
-        f"Based on the following Home Assistant configuration and user prompt, "
-        f"generate a Home Assistant automation in YAML format. The YAML must "
-        f"be a single YAML document. Do not include any YAML headers or footers, "
-        f"just the automation content. Also, provide a brief, single-sentence summary of the automation. "
-        f"The response MUST be a valid JSON object with a 'summary' key and a 'yaml' key. "
-        f"Example format: {{'summary': 'A brief summary of the automation.', 'yaml': '...automation yaml...'}}\n\n"
-        f"Home Assistant Configuration:\n{ha_context}\n\n"
-        f"User Prompt:\n{prompt}"
-    )
-
-    payload = {
-        "contents": [{
-            "parts": [{ "text": full_prompt }]
-        }]
-    }
-
-    response = requests.post(url, json=payload)
-    response.raise_for_status()
-    result = response.json()
-    
-    # Gemini response can be complex, extract the text part
-    gemini_text = result['candidates'][0]['content']['parts'][0]['text']
-    # Attempt to parse the JSON string from the LLM's text output
-    return json.loads(gemini_text)
+@app.route('/api/config')
+def get_config():
+    """Get current configuration (excluding sensitive data)"""
+    options = get_options()
+    # Don't expose API keys
+    safe_config = {k: ('***' if 'key' in k.lower() and v else v) for k, v in options.items()}
+    return jsonify(safe_config)
 
 @app.route('/api/generate_automation', methods=['POST'])
 def generate_automation():
-    """
-    Main endpoint to generate an automation.
-    1. Fetches Home Assistant context.
-    2. Calls the selected LLM with the context and user prompt.
-    3. Returns the generated summary and YAML to the frontend.
-    """
-    data = request.get_json()
-    user_prompt = data.get('prompt')
-    if not user_prompt:
-        return jsonify({"error": "Prompt is required."}), 400
-    
+    """Generate automation using selected LLM provider (matches your Vue.js frontend)"""
     try:
-        ha_context = format_ha_config_for_llm()
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
         
-        if LLM_PROVIDER == 'ollama':
-            llm_response = call_ollama(user_prompt, ha_context)
-        elif LLM_PROVIDER == 'gemini':
-            llm_response = call_gemini(user_prompt, ha_context)
+        options = get_options()
+        llm_provider = options.get('llm_provider', 'ollama')
+        
+        prompt = data.get('prompt', '')
+        if not prompt:
+            return jsonify({'error': 'No prompt provided'}), 400
+        
+        print(f"[INFO] Generating automation with {llm_provider} for prompt: {prompt[:100]}...")
+        
+        if llm_provider == 'ollama':
+            return generate_with_ollama(prompt, options)
+        elif llm_provider == 'gemini':
+            return generate_with_gemini(prompt, options)
         else:
-            return jsonify({"error": "Invalid LLM provider specified."}), 400
+            return jsonify({'error': f'Unknown LLM provider: {llm_provider}'}), 400
             
-        summary = llm_response.get('summary', 'No summary provided by LLM.')
-        yaml_content = llm_response.get('yaml', 'No YAML provided by LLM.')
-        
-        # Validate that the LLM returned valid YAML
-        try:
-            yaml.safe_load(yaml_content)
-        except yaml.YAMLError:
-            return jsonify({"error": "LLM returned invalid YAML."}), 500
-            
-        return jsonify({
-            "summary": summary,
-            "yaml": yaml_content
-        })
-        
-    except requests.exceptions.RequestException as e:
-        print(f"LLM API request failed: {e}")
-        return jsonify({"error": f"LLM API request failed. Please check your configuration and network connection: {e}"}), 500
-    except (ValueError, KeyError, TypeError) as e:
-        print(f"Error parsing LLM response or invalid configuration: {e}")
-        return jsonify({"error": f"Error with LLM response or add-on configuration: {e}"}), 500
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+        print(f"[ERROR] Error in generate_automation: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/install_automation', methods=['POST'])
 def install_automation():
-    """
-    Endpoint to install the generated automation.
-    In a real implementation, this would use the Home Assistant WebSocket API
-    to add and reload the automation configuration.
-    """
-    data = request.get_json()
-    automation_yaml = data.get('yaml')
-    
-    if not automation_yaml:
-        return jsonify({"error": "Automation YAML is required."}), 400
-    
-    # --- IMPORTANT: REAL IMPLEMENTATION DETAILS ---
-    # The simplest, most robust way to install an automation via an add-on is
-    # to write the YAML content to a file in a configuration package (e.g., config/packages/llm_automations.yaml)
-    # and then call the 'automation.reload' service via the Home Assistant WebSocket API.
-    # The Supervisor API does not expose a REST endpoint to add automations directly.
-    # This example only simulates success for demonstration purposes.
+    """Install automation into Home Assistant (matches your Vue.js frontend)"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        automation_yaml = data.get('automation_yaml', '')
+        if not automation_yaml:
+            return jsonify({'error': 'No automation YAML provided'}), 400
+        
+        print(f"[INFO] Installing automation: {automation_yaml[:200]}...")
+        
+        # TODO: Implement actual Home Assistant API integration
+        # For now, just return success
+        return jsonify({
+            'success': True,
+            'message': 'Automation would be installed (not implemented yet)',
+            'automation_yaml': automation_yaml
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Error in install_automation: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-    print("Simulating automation installation...")
-    print("Received YAML:")
-    print(automation_yaml)
-    
-    # In a full implementation, you'd perform the following steps:
-    # 1. Connect to HA's WebSocket API.
-    # 2. Authenticate using the SUPERVISOR_TOKEN.
-    # 3. Use the 'config/set_value' command to save the automation to a configuration file.
-    # 4. Use the 'automation/reload' service call to make HA recognize the new automation.
-    
-    return jsonify({
-        "status": "success",
-        "message": "Automation installation request received. A full implementation would now communicate with the Home Assistant API to write and reload the configuration."
-    })
+def generate_with_ollama(prompt, options):
+    """Generate automation using Ollama"""
+    try:
+        ollama_url = options.get('ollama_api_url', 'http://ollama:11434/api/generate')
+        model = options.get('ollama_model', 'llama3')
+        
+        automation_prompt = f"""Create a detailed Home Assistant automation for the following request:
+{prompt}
+
+Please provide:
+1. A clear summary of what the automation does
+2. The complete YAML configuration
+
+Format your response as JSON with 'summary' and 'yaml' fields."""
+        
+        payload = {
+            'model': model,
+            'prompt': automation_prompt,
+            'stream': False
+        }
+        
+        print(f"[INFO] Calling Ollama at {ollama_url}")
+        response = requests.post(ollama_url, json=payload, timeout=30)
+        response.raise_for_status()
+        
+        result = response.json()
+        automation_text = result.get('response', '')
+        
+        # Try to parse as JSON, fallback to text parsing
+        try:
+            import json
+            automation_data = json.loads(automation_text)
+            return jsonify(automation_data)
+        except:
+            # Fallback: create structure from text
+            return jsonify({
+                'summary': f'Generated automation for: {prompt}',
+                'yaml': automation_text
+            })
+        
+    except Exception as e:
+        print(f"[ERROR] Ollama error: {str(e)}")
+        return jsonify({'error': f'Ollama error: {str(e)}'}), 500
+
+def generate_with_gemini(prompt, options):
+    """Generate automation using Google Gemini"""
+    try:
+        api_key = options.get('gemini_api_key', '')
+        if not api_key:
+            return jsonify({'error': 'Gemini API key not configured'}), 400
+        
+        # Updated model name - Google changed from gemini-pro to gemini-1.5-flash or gemini-1.5-pro
+        model_name = options.get('gemini_model', 'gemini-1.5-flash')
+        
+        # Map old model names to new ones
+        model_mapping = {
+            'gemini-pro': 'gemini-1.5-pro',
+            'gemini-pro-vision': 'gemini-1.5-pro',
+            'gemini-1.0-pro': 'gemini-1.5-pro'
+        }
+        
+        if model_name in model_mapping:
+            model_name = model_mapping[model_name]
+            print(f"[INFO] Mapped old model name to: {model_name}")
+        
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+        
+        automation_prompt = f"""Create a detailed Home Assistant automation for the following request:
+{prompt}
+
+Please provide your response as JSON with these exact fields:
+- "summary": A clear description of what the automation does
+- "yaml": The complete Home Assistant automation YAML configuration
+
+Example format:
+{{
+  "summary": "Turns on lights when motion detected after sunset",
+  "yaml": "alias: Motion Light\\ntrigger:\\n  - platform: state\\n    entity_id: binary_sensor.motion\\n    to: 'on'\\ncondition:\\n  - condition: sun\\n    after: sunset\\naction:\\n  - service: light.turn_on\\n    target:\\n      entity_id: light.living_room"
+}}
+
+Make sure the YAML is valid Home Assistant automation syntax."""
+        
+        print(f"[INFO] Calling Gemini with model {model_name}")
+        response = model.generate_content(automation_prompt)
+        
+        # Try to parse as JSON, fallback to text parsing
+        try:
+            # Clean up the response text to extract JSON
+            response_text = response.text.strip()
+            
+            # Remove markdown code blocks if present
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            
+            response_text = response_text.strip()
+            
+            automation_data = json.loads(response_text)
+            return jsonify(automation_data)
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Failed to parse Gemini JSON response: {e}")
+            print(f"[ERROR] Raw response: {response.text}")
+            # Fallback: create structure from text
+            return jsonify({
+                'summary': f'Generated automation for: {prompt}',
+                'yaml': response.text
+            })
+        
+    except Exception as e:
+        print(f"[ERROR] Gemini error: {str(e)}")
+        return jsonify({'error': f'Gemini error: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    # For standalone testing with a local Flask server
-    # Note: In production, Gunicorn will run the app.
-    app.run(debug=True, host='0.0.0.0', port=8099)
+    print("🚀 Starting AItomations Flask backend...")
+    print(f"📁 Working directory: {os.getcwd()}")
+    print(f"🎨 Static directory: {STATIC_DIR}")
+    print(f"📁 Static files available: {os.path.exists(STATIC_DIR)}")
+    
+    if os.path.exists(STATIC_DIR):
+        print(f"📋 Files in dist: {os.listdir(STATIC_DIR)}")
+        assets_dir = os.path.join(STATIC_DIR, 'assets')
+        if os.path.exists(assets_dir):
+            print(f"📋 Files in assets: {os.listdir(assets_dir)}")
+    
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=8099, debug=False)
