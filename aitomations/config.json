@@ -1,7 +1,7 @@
 {
-    "name": "AItomations",
+    "name": "AItomations Creator",
     "version": "0.1.0",
-    "slug": "aitomations",
+    "slug": "aitomations-creator",
     "description": "Create Home Assistant automations using LLMs like Gemini or Ollama.",
     "url": "https://github.com/glmatra/aitomations",
     "startup": "application",
@@ -17,7 +17,7 @@
         "8099/tcp": 8099
     },
     "ports_description": {
-        "8099/tcp": "Web interface for LLM Automation Creator"
+        "8099/tcp": "Web interface for AItomations Creator"
     },
     "ingress": true,
     "ingress_port": 8099,
@@ -40,6 +40,5 @@
         "gemini_api_key": "password?",
         "gemini_model": "list(gemini-1.5-flash|gemini-1.5-pro)?",
         "llm_provider": "list(ollama|gemini)"
-    },
-    "webui": "[PROTOCOL://][HOST]:[PORT:8099]"
+    }
 }
