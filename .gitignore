@@ -18,3 +18,4 @@ __pycache__/
 .env.local
 package-lock.json
 key.local
+dist/

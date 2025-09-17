@@ -79,8 +79,8 @@ const installing = ref(false)
 const modifying = ref(false)
 const errorMessage = ref('')
 
-// Always use /api for both dev and production
-const API_BASE_URL = '/api'
+// For Home Assistant ingress, always use relative URLs
+const API_BASE_URL = './api'
 
 async function generateAutomation() {
     loading.value = true
@@ -89,6 +89,7 @@ async function generateAutomation() {
 
     try {
         console.log('Generating automation with prompt:', userPrompt.value)
+        console.log('API URL:', `${API_BASE_URL}/generate_automation`)
 
         const response = await fetch(`${API_BASE_URL}/generate_automation`, {
             method: 'POST',
@@ -98,12 +99,16 @@ async function generateAutomation() {
             body: JSON.stringify({ prompt: userPrompt.value }),
         })
 
+        console.log('Response status:', response.status)
+        console.log('Response URL:', response.url)
+
         if (!response.ok) {
             const errorText = await response.text()
             throw new Error(`Failed to generate: ${response.status} - ${errorText}`)
         }
 
         const data: AutomationResponse = await response.json()
+        console.log('Received data:', data)
         generatedAutomation.value = data
     } catch (error: any) {
         console.error('Error generating automation:', error)
@@ -139,7 +144,6 @@ async function installAutomation() {
         userPrompt.value = ''
         generatedAutomation.value = null
 
-        // You could show a success snackbar here instead
         alert('Automation installed successfully!')
     } catch (error: any) {
         console.error('Error installing automation:', error)
@@ -157,6 +161,11 @@ async function modifyAutomation() {
         modifying.value = false
     }
 }
+
+// Debug logging
+console.log('Vue app mounted')
+console.log('Current location:', window.location.href)
+console.log('API Base URL:', API_BASE_URL)
 </script>
 
 <style>
