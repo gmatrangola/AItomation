@@ -31,14 +31,14 @@
         "ollama_api_url": "http://ollama:11434/api/generate",
         "ollama_model": "llama3",
         "gemini_api_key": "",
-        "gemini_model": "gemini-1.5-flash",
+        "gemini_model": "gemini-2.5-pro",
         "llm_provider": "gemini"
     },
     "schema": {
         "ollama_api_url": "str?",
         "ollama_model": "str?",
         "gemini_api_key": "password?",
-        "gemini_model": "list(gemini-1.5-flash|gemini-1.5-pro)?",
+        "gemini_model": "list(gemini-2.5-flash|gemini-2.5-pro)?",
         "llm_provider": "list(ollama|gemini)"
     }
 }
