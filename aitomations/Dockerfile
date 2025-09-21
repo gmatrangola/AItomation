@@ -5,7 +5,6 @@ ARG BUILD_FROM
 
 # --- Builder Stage ---
 # This stage builds the Vue frontend
-# We use a standard node image and install pnpm to ensure cache invalidation.
 FROM node:20-alpine AS builder
 
 # Install pnpm
@@ -46,11 +45,11 @@ RUN pip3 install \
     --break-system-packages \
     -r requirements.txt
 
-# Copy the Python backend source code
-COPY src/backend/ ./backend/
+# **FIX**: Copy the backend source code into a 'src' directory to match our package structure
+COPY src/backend/ ./src/backend/
 
-# Copy the pre-built frontend from the 'builder' stage
-COPY --from=builder /usr/src/app/dist ./backend/dist
+# **FIX**: Copy the pre-built frontend into the correct location within the new structure
+COPY --from=builder /usr/src/app/dist ./src/backend/dist
 
 # Create the service directory and copy the run script
 RUN mkdir -p /etc/services.d/aitomations
@@ -59,9 +58,6 @@ RUN chmod +x /etc/services.d/aitomations/run
 
 # Copy rootfs contents
 COPY rootfs/ /
-
-# Set the current working directory to the backend
-WORKDIR /usr/src/app/backend
 
 # Expose the port the backend will run on
 EXPOSE 8099

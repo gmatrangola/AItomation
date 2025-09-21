@@ -1,19 +1,15 @@
-#!/usr/bin/with-contenv bash
+#!/usr/bin/with-contenv bashio
 
-# Set the path to the Python script
-PYTHON_APP_DIR="/usr/src/app/backend"
+bashio::log.info "Starting AItomations backend server with Gunicorn..."
 
-# Set the port for the Flask app (must match config.json)
-FLASK_PORT=8099
-
-# Change to the backend directory
-cd "$PYTHON_APP_DIR" || exit 1
-
-# Start the Flask application using Gunicorn
+# The Gunicorn command to run the Flask application.
+# --pythonpath /usr/src/app: This directly tells Gunicorn to add /usr/src/app
+# to Python's import path, solving the "No module named 'src'" issue.
 exec gunicorn \
-    --bind 0.0.0.0:"$FLASK_PORT" \
-    --workers 1 \
+    --workers 2 \
+    --bind "0.0.0.0:8099" \
     --log-level info \
     --access-logfile '-' \
     --error-logfile '-' \
-    app:app
+    --pythonpath /usr/src/app \
+    "src.backend.app:app"
