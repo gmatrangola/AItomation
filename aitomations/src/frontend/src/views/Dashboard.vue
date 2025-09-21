@@ -16,8 +16,17 @@
                         <div v-if="aiResponse" class="mb-4 pa-3"
                             style="border: 1px solid #ccc; border-radius: 4px; background-color: #f9f9f9;">
                             <p class="font-weight-bold">AItomations Assistant:</p>
-                            <!-- We will add formatted YAML and install buttons here later -->
-                            <pre style="white-space: pre-wrap; font-family: monospace;">{{ aiResponse }}</pre>
+
+                            <!-- Display the explanation -->
+                            <p v-if="aiResponse.explanation">{{ aiResponse.explanation }}</p>
+
+                            <!-- Display the formatted YAML -->
+                            <pre v-if="aiResponse.automation_yaml"
+                                style="white-space: pre-wrap; font-family: monospace; background-color: #eef; padding: 10px; border-radius: 4px;">{{ aiResponse.automation_yaml }}</pre>
+
+                            <!-- Display raw error for debugging -->
+                            <pre v-if="aiResponse.error"
+                                style="white-space: pre-wrap; color: red;">{{ aiResponse.rawResponse }}</pre>
                         </div>
 
                         <!-- Prompt Input -->
@@ -67,6 +76,13 @@ interface Automation {
     is_editable: boolean;
 }
 
+interface AiResponse {
+    automation_yaml?: string;
+    explanation?: string;
+    error?: string;
+    rawResponse?: string;
+}
+
 // Refs for existing automation list
 const loading = ref(true);
 const automations = ref<Automation[]>([]);
@@ -80,37 +96,36 @@ const headers = [
 
 // Refs for new chat interface
 const prompt = ref('');
-const aiResponse = ref('');
+const aiResponse = ref<AiResponse | null>(null); // Use the new interface
 const generating = ref(false);
 
 const submitPrompt = async () => {
     if (!prompt.value) return;
     generating.value = true;
-    aiResponse.value = ''; // Clear previous response
-    let response; // Define response outside the try block to access it in catch
+    aiResponse.value = null; // Clear previous response
+    let response;
     try {
-        response = await fetch('/api/generate_automation', {
+        response = await fetch('api/generate_automation', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: prompt.value }),
         });
         const data = await response.json();
         if (response.ok) {
-            // For now, just display the raw JSON response. We'll format this nicely later.
-            aiResponse.value = JSON.stringify(data, null, 2);
+            // The backend now sends a structured object
+            aiResponse.value = data;
         } else {
             throw new Error(data.error || 'An unknown error occurred');
         }
     } catch (error: any) {
         console.error("Frontend Error:", error);
-        // New Logging: If parsing fails, get the raw text response
         if (response) {
             response.text().then(text => {
                 console.error("Raw Backend Response Text:", text);
-                aiResponse.value = `Error: ${error.message}\n\nRaw Response:\n${text}`;
+                aiResponse.value = { error: error.message, rawResponse: text };
             });
         } else {
-            aiResponse.value = `Error: ${error.message}`;
+            aiResponse.value = { error: error.message };
         }
     } finally {
         generating.value = false;
@@ -120,7 +135,8 @@ const submitPrompt = async () => {
 const fetchAutomations = async () => {
     loading.value = true;
     try {
-        const response = await fetch('/api/automations');
+        // REMOVED leading slash '/'
+        const response = await fetch('api/automations');
         if (!response.ok) throw new Error('Failed to fetch automations');
         automations.value = await response.json();
     } catch (error) {

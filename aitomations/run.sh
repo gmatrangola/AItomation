@@ -2,9 +2,13 @@
 
 bashio::log.info "Starting AItomations backend server with Gunicorn..."
 
+# Change the working directory to the application root.
+# This makes '/usr/src/app' the starting point for Python's module search.
+cd /usr/src/app
+
 # The Gunicorn command to run the Flask application.
-# --pythonpath /usr/src/app: This directly tells Gunicorn to add /usr/src/app
-# to Python's import path, solving the "No module named 'src'" issue.
+# The --pythonpath argument is now redundant because of the 'cd' command,
+# but we will leave it for maximum compatibility.
 exec gunicorn \
     --workers 2 \
     --bind "0.0.0.0:8099" \
