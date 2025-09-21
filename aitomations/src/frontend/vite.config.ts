@@ -6,8 +6,16 @@ import vuetify from 'vite-plugin-vuetify';
 export default defineConfig({
   plugins: [
     vue(),
-    vuetify(), // Use default Vuetify configuration
+    vuetify({
+      autoImport: true, // Automatically import components
+      labs: true,       // Enable Vuetify Labs components like VDataTable
+    }),
   ],
+  resolve: {
+    alias: {
+      '@': '/src',
+    },
+  },
   server: {
     port: 5173,
     host: true,

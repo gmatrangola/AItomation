@@ -2,170 +2,215 @@
     <v-app>
         <v-app-bar color="primary" dark>
             <v-app-bar-title>
-                <v-icon class="mr-2">mdi-robot</v-icon>
-                AItomations
+                <v-icon class="mr-2">mdi-robot-happy</v-icon>
+                AItomations Dashboard
             </v-app-bar-title>
+            <v-spacer></v-spacer>
+            <v-btn @click="openCreateDialog" prepend-icon="mdi-plus-circle">
+                Create New Automation
+            </v-btn>
         </v-app-bar>
 
         <v-main>
             <v-container fluid>
-                <v-row justify="center">
-                    <v-col cols="12" md="8" lg="6">
-                        <v-card class="mt-4">
-                            <v-card-title>
-                                <v-icon class="mr-2">mdi-magic-staff</v-icon>
-                                Create Home Assistant Automation
-                            </v-card-title>
+                <v-card>
+                    <v-card-title>Your Automations</v-card-title>
+                    <v-data-table :headers="headers" :items="automations" :loading="loading" item-key="id"
+                        class="elevation-1">
+                        <template v-slot:item.alias="{ item }">
+                            <strong>{{ item.alias }}</strong>
+                        </template>
 
-                            <v-card-text>
-                                <v-textarea v-model="userPrompt" label="Describe your automation"
-                                    placeholder="e.g., Turn on the living room lights when motion is detected after sunset"
-                                    rows="3" variant="outlined" :disabled="loading" />
+                        <template v-slot:item.prompt="{ item }">
+                            <v-chip v-if="item.prompt" color="blue" variant="tonal" size="small">
+                                <v-icon start>mdi-comment-quote-outline</v-icon>
+                                {{ item.prompt }}
+                            </v-chip>
+                            <span v-else class="text-grey">N/A</span>
+                        </template>
 
-                                <v-btn @click="generateAutomation" :loading="loading" :disabled="!userPrompt.trim()"
-                                    color="primary" size="large" block class="mt-3">
-                                    <v-icon left>mdi-creation</v-icon>
-                                    Generate Automation
-                                </v-btn>
-                            </v-card-text>
-                        </v-card>
-
-                        <!-- Error Message -->
-                        <v-alert v-if="errorMessage" type="error" dismissible @click:close="errorMessage = ''"
-                            class="mt-4">
-                            {{ errorMessage }}
-                        </v-alert>
-
-                        <!-- Generated Automation -->
-                        <v-card v-if="generatedAutomation" class="mt-4">
-                            <v-card-title>
-                                <v-icon class="mr-2">mdi-check-circle</v-icon>
-                                Generated Automation
-                            </v-card-title>
-
-                            <v-card-text>
-                                <AutomationSummary :automation="generatedAutomation" @install="installAutomation"
-                                    @modify="modifyAutomation" :installing="installing" :modifying="modifying" />
-                            </v-card-text>
-                        </v-card>
-                    </v-col>
-                </v-row>
+                        <template v-slot:item.actions="{ item }">
+                            <v-btn @click="openEditDialog(item)" color="primary" variant="tonal" size="small"
+                                class="mr-2">
+                                Edit with AI
+                            </v-btn>
+                            <v-btn :href="getHAEditLink(item.id)" target="_blank" variant="outlined" size="small">
+                                Edit in HA
+                            </v-btn>
+                        </template>
+                    </v-data-table>
+                </v-card>
             </v-container>
         </v-main>
 
-        <!-- Debug Info (remove in production) -->
-        <v-footer app>
-            <v-spacer />
-            <small class="text-grey">
-                API: {{ API_BASE_URL }} | Status: Connected
-            </small>
-        </v-footer>
+        <!-- Create/Edit Dialog -->
+        <v-dialog v-model="dialog" max-width="800px">
+            <v-card>
+                <v-card-title>{{ isEditing ? 'Edit Automation with AI' : 'Create New Automation' }}</v-card-title>
+                <v-card-text>
+                    <v-textarea v-model="prompt"
+                        :label="isEditing ? 'Describe your changes' : 'Describe the automation you want to create'"
+                        rows="3" auto-grow></v-textarea>
+                    <v-alert v-if="generationError" type="error" class="mt-4">{{ generationError }}</v-alert>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn text @click="dialog = false">Cancel</v-btn>
+                    <v-btn color="primary" @click="submitGeneration" :loading="generating">
+                        {{ isEditing ? 'Generate Changes' : 'Generate Automation' }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
+        <!-- Result/Install Dialog -->
+        <v-dialog v-model="resultDialog" max-width="900px">
+            <v-card v-if="generatedResult">
+                <v-card-title>Generated Automation</v-card-title>
+                <v-alert v-if="generatedResult.context_summary" type="info" variant="tonal" class="mx-4 mb-0"
+                    density="compact">
+                    {{ generatedResult.context_summary }}
+                </v-alert>
+                <v-card-text>
+                    <AutomationSummary :automation="generatedResult" @install="installAutomation"
+                        :installing="installing" />
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn text @click="resultDialog = false">Close</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
+
     </v-app>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import AutomationSummary from './components/AutomationSummary.vue'
+import { ref, onMounted } from 'vue';
+import AutomationSummary from './components/AutomationSummary.vue';
 
-interface AutomationResponse {
-    summary: string
-    yaml: string
+interface Automation {
+    id: string;
+    entity_id: string;
+    alias: string;
+    state: string;
+    prompt?: string;
+    source?: string;
 }
 
-const userPrompt = ref('')
-const generatedAutomation = ref<AutomationResponse | null>(null)
-const loading = ref(false)
-const installing = ref(false)
-const modifying = ref(false)
-const errorMessage = ref('')
+interface GeneratedResult {
+    summary: string;
+    yaml: string;
+    prompt: string;
+    context_summary?: string;
+}
 
-// For Home Assistant ingress, always use relative URLs
-const API_BASE_URL = './api'
+const API_BASE_URL = './api';
 
-async function generateAutomation() {
-    loading.value = true
-    errorMessage.value = ''
-    generatedAutomation.value = null
+const automations = ref<Automation[]>([]);
+const loading = ref(true);
+const dialog = ref(false);
+const resultDialog = ref(false);
+const isEditing = ref(false);
+const generating = ref(false);
+const installing = ref(false);
+const prompt = ref('');
+const generationError = ref('');
+const currentAutomationId = ref<string | null>(null);
+const generatedResult = ref<GeneratedResult | null>(null);
+
+const headers = [
+    { title: 'Name', key: 'alias', sortable: true },
+    { title: 'AI Prompt', key: 'prompt', sortable: false },
+    { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
+];
+
+async function fetchAutomations() {
+    loading.value = true;
+    try {
+        const response = await fetch(`${API_BASE_URL}/automations`);
+        if (!response.ok) throw new Error('Failed to fetch automations');
+        automations.value = await response.json();
+    } catch (error) {
+        console.error(error);
+    } finally {
+        loading.value = false;
+    }
+}
+
+onMounted(fetchAutomations);
+
+function getHAEditLink(id: string) {
+    return `/config/automation/edit/${id}`;
+}
+
+function openCreateDialog() {
+    isEditing.value = false;
+    prompt.value = '';
+    currentAutomationId.value = null;
+    generationError.value = '';
+    dialog.value = true;
+}
+
+function openEditDialog(item: Automation) {
+    isEditing.value = true;
+    prompt.value = ''; // Start with a blank prompt for changes
+    currentAutomationId.value = item.id;
+    generationError.value = '';
+    dialog.value = true;
+}
+
+async function submitGeneration() {
+    generating.value = true;
+    generationError.value = '';
+
+    const url = isEditing.value ? `${API_BASE_URL}/edit_automation` : `${API_BASE_URL}/generate_automation`;
+    const body = isEditing.value
+        ? { automation_id: currentAutomationId.value, prompt: prompt.value }
+        : { prompt: prompt.value };
 
     try {
-        console.log('Generating automation with prompt:', userPrompt.value)
-        console.log('API URL:', `${API_BASE_URL}/generate_automation`)
-
-        const response = await fetch(`${API_BASE_URL}/generate_automation`, {
+        const response = await fetch(url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ prompt: userPrompt.value }),
-        })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to generate.');
 
-        console.log('Response status:', response.status)
-        console.log('Response URL:', response.url)
-
-        if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(`Failed to generate: ${response.status} - ${errorText}`)
-        }
-
-        const data: AutomationResponse = await response.json()
-        console.log('Received data:', data)
-        generatedAutomation.value = data
+        generatedResult.value = data;
+        dialog.value = false;
+        resultDialog.value = true;
     } catch (error: any) {
-        console.error('Error generating automation:', error)
-        errorMessage.value = error.message || 'An unknown error occurred'
+        generationError.value = error.message;
     } finally {
-        loading.value = false
+        generating.value = false;
     }
 }
 
 async function installAutomation() {
-    if (!generatedAutomation.value) return
-
-    installing.value = true
-    errorMessage.value = ''
-
+    if (!generatedResult.value) return;
+    installing.value = true;
     try {
         const response = await fetch(`${API_BASE_URL}/install_automation`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                automation_yaml: generatedAutomation.value.yaml
+                automation_yaml: generatedResult.value.yaml,
+                prompt: generatedResult.value.prompt // Pass the prompt for metadata
             }),
-        })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to install.');
 
-        if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(`Failed to install: ${response.status} - ${errorText}`)
-        }
-
-        // Success - reset form
-        userPrompt.value = ''
-        generatedAutomation.value = null
-
-        alert('Automation installed successfully!')
+        resultDialog.value = false;
+        await fetchAutomations(); // Refresh the list
     } catch (error: any) {
-        console.error('Error installing automation:', error)
-        errorMessage.value = error.message || 'Installation failed'
+        alert(`Installation failed: ${error.message}`);
     } finally {
-        installing.value = false
+        installing.value = false;
     }
 }
-
-async function modifyAutomation() {
-    modifying.value = true
-    try {
-        await generateAutomation()
-    } finally {
-        modifying.value = false
-    }
-}
-
-// Debug logging
-console.log('Vue app mounted')
-console.log('Current location:', window.location.href)
-console.log('API Base URL:', API_BASE_URL)
 </script>
 
 <style>
