@@ -1,6 +1,8 @@
-# **AItomations \- Home Assistant LLM Automation Creator**
+# **AItomations - Home Assistant LLM Automation Creator**
 
 A Home Assistant add-on that allows you to create automations by describing what you want in plain English. It uses a Large Language Model (LLM) like Google's Gemini or a local Ollama instance to generate the automation's YAML configuration.
+
+This is the source code for my Home Assistant Addon. The backend for interfacing with the Home Assistant API and the Large Language Models which is written in Python. There is a front-end for the web-interface written Vue 3 + Vuetify + TypeScript. It contains a deployment script that builds both sides, packages up the artifacts and uses rsync to send them to my Test Home Assistant Instance. On my Test Home Assistant instance, I have several entities configured that I can use to test. I set up the addon through Home Assistant's user interface
 
 ## **Table of Contents**
 
@@ -8,16 +10,16 @@ A Home Assistant add-on that allows you to create automations by describing what
 * [Prerequisites](https://www.google.com/search?q=%23prerequisites)  
 * [Development Setup](https://www.google.com/search?q=%23development-setup)  
 * [Running in Development Mode](https://www.google.com/search?q=%23running-in-development-mode)  
-  * [1\. Run the Backend (Python)](https://www.google.com/search?q=%231-run-the-backend-python)  
-  * [2\. Run the Frontend (Vue)](https://www.google.com/search?q=%232-run-the-frontend-vue)  
-  * [3\. Access the App](https://www.google.com/search?q=%233-access-the-app)  
+  * [1. Run the Backend (Python)](https://www.google.com/search?q=%231-run-the-backend-python)  
+  * [2. Run the Frontend (Vue)](https://www.google.com/search?q=%232-run-the-frontend-vue)  
+  * [3. Access the App](https://www.google.com/search?q=%233-access-the-app)  
 * [Debugging in VS Code](https://www.google.com/search?q=%23debugging-in-vs-code)  
-  * [1\. Create a launch.json File](https://www.google.com/search?q=%231-create-a-launchjson-file)  
-  * [2\. Start a Debug Session](https://www.google.com/search?q=%232-start-a-debug-session)  
+  * [1. Create a launch.json File](https://www.google.com/search?q=%231-create-a-launchjson-file)  
+  * [2. Start a Debug Session](https://www.google.com/search?q=%232-start-a-debug-session)  
 * [Testing in Home Assistant](https://www.google.com/search?q=%23testing-in-home-assistant)  
-  * [1\. Access Home Assistant's Filesystem](https://www.google.com/search?q=%231-access-home-assistants-filesystem)  
-  * [2\. Copy the Add-on](https://www.google.com/search?q=%232-copy-the-add-on)  
-  * [3\. Install and Configure the Add-on](https://www.google.com/search?q=%233-install-and-configure-the-add-on)  
+  * [1. Access Home Assistant's Filesystem](https://www.google.com/search?q=%231-access-home-assistants-filesystem)  
+  * [2. Copy the Add-on](https://www.google.com/search?q=%232-copy-the-add-on)  
+  * [3. Install and Configure the Add-on](https://www.google.com/search?q=%233-install-and-configure-the-add-on)  
 * [Project Structure](https://www.google.com/search?q=%23project-structure)
 
 ## **Features**
@@ -41,7 +43,7 @@ Before you begin, ensure you have the following installed on your system:
 The project is configured to run inside a self-contained Dev Container, which includes Python, Node.js, and all necessary tools.
 
 1. **Clone the Repository:**  
-   git clone \[https://github.com/your-username/your-addon-repo.git\](https://github.com/your-username/your-addon-repo.git)  
+   git clone [https://github.com/your-username/your-addon-repo.git](https://github.com/your-username/your-addon-repo.git)  
    cd your-addon-repo
 
 2. **Open in Dev Container:**  
@@ -55,37 +57,37 @@ The postCreateCommand in .devcontainer/devcontainer.json will automatically inst
 
 To work on the application locally, you need to run the Python backend and the Vue frontend simultaneously in separate terminals.
 
-### **1\. Run the Backend (Python)**
+### **1. Run the Backend (Python)**
 
 The backend is a Flask server that handles API requests.
 
-* Open a new terminal in VS Code (Terminal \-\> New Terminal).  
+* Open a new terminal in VS Code (Terminal -> New Terminal).  
 * Start the Flask server:  
   python add-on/src/backend/app.py
 
 * The server will start on http://localhost:8099. You will see output indicating that the server is running.
 
-### **2\. Run the Frontend (Vue)**
+### **2. Run the Frontend (Vue)**
 
 The frontend is a Vue 3 application served by Vite's dev server.
 
-* Open a **second** terminal in VS Code by clicking the \+ icon in the terminal panel.  
+* Open a **second** terminal in VS Code by clicking the + icon in the terminal panel.  
 * Navigate to the frontend directory and start the dev server:  
   cd add-on/src/frontend  
   pnpm run dev
 
 * The Vite server will start on http://localhost:5173.
 
-### **3\. Access the App**
+### **3. Access the App**
 
 * Open your web browser and navigate to **http://localhost:5173**.  
-* You should see the AItomations UI. The vite.config.ts file is configured to automatically proxy any API calls (e.g., to /api/generate\_automation) from the frontend to the backend Flask server running on port 8099\.
+* You should see the AItomations UI. The vite.config.ts file is configured to automatically proxy any API calls (e.g., to /api/generate_automation) from the frontend to the backend Flask server running on port 8099.
 
 ## **Debugging in VS Code**
 
 You can debug both the Python backend and the Vue frontend simultaneously using VS Code's debugger.
 
-### **1\. Create a launch.json File**
+### **1. Create a launch.json File**
 
 First, you need to configure the debugger.
 
@@ -98,22 +100,22 @@ First, you need to configure the debugger.
 
 {  
     "version": "0.2.0",  
-    "configurations": \[  
+    "configurations": [  
         {  
             "name": "Python: Flask",  
             "type": "debugpy",  
             "request": "launch",  
             "module": "flask",  
             "env": {  
-                "FLASK\_APP": "add-on/src/backend/app.py",  
-                "FLASK\_DEBUG": "1"  
+                "FLASK_APP": "add-on/src/backend/app.py",  
+                "FLASK_DEBUG": "1"  
             },  
-            "args": \[  
+            "args": [  
                 "run",  
                 "--no-debugger",  
                 "--no-reload",  
                 "--port=8099"  
-            \],  
+            ],  
             "jinja": true,  
             "justMyCode": true  
         },  
@@ -131,20 +133,20 @@ First, you need to configure the debugger.
             "url": "http://localhost:5173",  
             "webRoot": "${workspaceFolder}/add-on/src/frontend"  
         }  
-    \],  
-    "compounds": \[  
+    ],  
+    "compounds": [  
         {  
             "name": "Debug Backend & Frontend (Edge)",  
-            "configurations": \["Python: Flask", "Frontend: Debug in Edge"\]  
+            "configurations": ["Python: Flask", "Frontend: Debug in Edge"]  
         },  
         {  
             "name": "Debug Backend & Frontend (Chrome)",  
-            "configurations": \["Python: Flask", "Frontend: Debug in Chrome"\]  
+            "configurations": ["Python: Flask", "Frontend: Debug in Chrome"]  
         }  
-    \]  
+    ]  
 }
 
-### **2\. Start a Debug Session**
+### **2. Start a Debug Session**
 
 **Important:** Do **NOT** start the servers manually in the terminal if you are using this debug method. The debugger will launch them for you.
 
@@ -228,15 +230,15 @@ To get your add-on into your new Home Assistant VM, you need to serve your local
 ## **Project Structure**
 
 .  
-├── .devcontainer/     \# VS Code Development Container configuration  
-├── add-on/            \# The Home Assistant Add-on itself  
-│   ├── Dockerfile     \# The production Dockerfile for the add-on  
-│   ├── config.json    \# Add-on manifest and configuration  
-│   ├── run.sh         \# Script that runs when the add-on starts  
-│   └── src/           \# Source code for the frontend and backend  
-│       ├── backend/   \# Python Flask server  
-│       └── frontend/  \# Vue 3 \+ Vuetify user interface  
-└── requirements.txt   \# Python dependencies  
+├── .devcontainer/     # VS Code Development Container configuration  
+├── add-on/            # The Home Assistant Add-on itself  
+│   ├── Dockerfile     # The production Dockerfile for the add-on  
+│   ├── config.json    # Add-on manifest and configuration  
+│   ├── run.sh         # Script that runs when the add-on starts  
+│   └── src/           # Source code for the frontend and backend  
+│       ├── backend/   # Python Flask server  
+│       └── frontend/  # Vue 3 + Vuetify user interface  
+└── requirements.txt   # Python dependencies  
 
 
 # Run in the Home Assistant Test Container
