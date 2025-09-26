@@ -7,43 +7,17 @@
             </v-col>
         </v-row>
 
-        <!-- Step 2: Chat Interface -->
+        <!-- Chat Interface -->
         <v-row>
             <v-col>
                 <v-card>
                     <v-card-text>
-                        <!-- AI Response Area -->
-                        <div v-if="aiResponse" class="mb-4 pa-3"
-                            style="border: 1px solid #ccc; border-radius: 4px; background-color: #f9f9f9;">
-                            <p class="font-weight-bold">AItomations Assistant:</p>
-
-                            <!-- Display the explanation -->
-                            <p v-if="aiResponse.explanation">{{ aiResponse.explanation }}</p>
-
-                            <!-- Display the formatted YAML -->
-                            <pre v-if="aiResponse.automation_yaml"
-                                style="white-space: pre-wrap; font-family: monospace; background-color: #eef; padding: 10px; border-radius: 4px;">{{ aiResponse.automation_yaml }}</pre>
-
-                            <!-- Display raw error for debugging -->
-                            <pre v-if="aiResponse.error"
-                                style="white-space: pre-wrap; color: red;">{{ aiResponse.rawResponse }}</pre>
-                        </div>
-
-                        <!-- Prompt Input -->
-                        <v-textarea v-model="prompt" label="Your Prompt"
-                            placeholder="e.g., 'Turn on the porch light at sunset and turn it off at sunrise'" rows="3"
-                            auto-grow clearable></v-textarea>
+                        <AIChat v-model="prompt" :response="aiResponse" :generating="generating"
+                            @generate-prompt="handleGeneratePrompt" @install-automation="handleInstallAutomation" />
                     </v-card-text>
-                    <v-card-actions>
-                        <v-spacer></v-spacer>
-                        <v-btn color="primary" :loading="generating" @click="submitPrompt">
-                            Generate
-                        </v-btn>
-                    </v-card-actions>
                 </v-card>
             </v-col>
         </v-row>
-        <!-- End of Chat Interface -->
 
         <v-divider class="my-6"></v-divider>
 
@@ -54,7 +28,9 @@
                     <v-card-title>Existing Automations</v-card-title>
                     <v-data-table :headers="headers" :items="automations" :loading="loading" item-key="id">
                         <template v-slot:item.actions="{ item }">
-                            <v-btn small :disabled="!item.is_editable">Edit with AI</v-btn>
+                            <v-btn size="small" :disabled="!item.is_editable" @click="handleEditAutomation(item)">
+                                Edit with AI
+                            </v-btn>
                         </template>
                     </v-data-table>
                 </v-card>
@@ -65,6 +41,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import AIChat from '../components/AIChat.vue';
 
 interface Automation {
     id: string;
@@ -94,35 +71,40 @@ const headers = [
     { title: 'Actions', value: 'actions', sortable: false },
 ];
 
-// Refs for new chat interface
+// Refs for chat interface
 const prompt = ref('');
-const aiResponse = ref<AiResponse | null>(null); // Use the new interface
+const aiResponse = ref<AiResponse | null>(null);
 const generating = ref(false);
 
-const submitPrompt = async () => {
-    if (!prompt.value) return;
+const handleGeneratePrompt = async (promptText: string) => {
     generating.value = true;
-    aiResponse.value = null; // Clear previous response
+    aiResponse.value = null;
+
     let response;
     try {
         response = await fetch('api/generate_automation', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: prompt.value }),
+            body: JSON.stringify({ prompt: promptText }),
         });
+
         const data = await response.json();
+
         if (response.ok) {
-            // The backend now sends a structured object
             aiResponse.value = data;
         } else {
             throw new Error(data.error || 'An unknown error occurred');
         }
     } catch (error: any) {
         console.error("Frontend Error:", error);
+
         if (response) {
             response.text().then(text => {
                 console.error("Raw Backend Response Text:", text);
-                aiResponse.value = { error: error.message, rawResponse: text };
+                aiResponse.value = {
+                    error: error.message,
+                    rawResponse: text
+                };
             });
         } else {
             aiResponse.value = { error: error.message };
@@ -132,10 +114,42 @@ const submitPrompt = async () => {
     }
 };
 
+const handleInstallAutomation = async (yaml: string) => {
+    try {
+        const response = await fetch('api/install_automation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                automation_yaml: yaml,
+                prompt: prompt.value
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to install automation');
+        }
+
+        // Refresh automations list and clear the current response
+        await fetchAutomations();
+        aiResponse.value = null;
+        prompt.value = '';
+
+        // You might want to show a success message here
+        console.log('Automation installed successfully');
+    } catch (error) {
+        console.error('Failed to install automation:', error);
+        // You might want to show an error message here
+    }
+};
+
+const handleEditAutomation = (automation: Automation) => {
+    // Implement edit functionality
+    console.log('Edit automation:', automation);
+};
+
 const fetchAutomations = async () => {
     loading.value = true;
     try {
-        // REMOVED leading slash '/'
         const response = await fetch('api/automations');
         if (!response.ok) throw new Error('Failed to fetch automations');
         automations.value = await response.json();
