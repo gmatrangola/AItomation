@@ -10,59 +10,12 @@
             </div>
 
             <!-- Success Response -->
-            <template v-if="!response.error">
-                <!-- Display the explanation with Markdown -->
-                <div v-if="response.explanation" class="explanation-section mt-3">
-                    <v-card variant="outlined" class="pa-3">
-                        <v-card-title class="text-subtitle-2 py-2">
-                            <v-icon class="mr-2">mdi-information</v-icon>
-                            Explanation
-                        </v-card-title>
-                        <v-divider class="mb-3"></v-divider>
-                        <div class="markdown-content" v-html="renderMarkdown(response.explanation)"></div>
-                    </v-card>
-                </div>
-
-                <!-- Display the YAML with syntax highlighting -->
-                <div v-if="response.automation_yaml" class="yaml-section mt-3">
-                    <v-card variant="outlined">
-                        <v-card-title class="text-subtitle-2 py-2">
-                            <v-icon class="mr-2">mdi-code-braces</v-icon>
-                            Generated Automation YAML
-                            <v-spacer></v-spacer>
-                            <v-btn icon="mdi-content-copy" size="small" variant="text" @click="copyYaml"
-                                :disabled="copying" class="copy-button">
-                                <v-icon>{{ copying ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
-                            </v-btn>
-                        </v-card-title>
-                        <v-divider></v-divider>
-                        <div class="code-container">
-                            <pre><code 
-                class="yaml-code language-yaml" 
-                v-html="highlightYaml(response.automation_yaml)"
-              ></code></pre>
-                        </div>
-                    </v-card>
-                </div>
-
-                <!-- Display full LLM response if available -->
-                <div v-if="response.full_response && response.full_response !== response.explanation"
-                    class="full-response-section mt-3">
-                    <v-expansion-panels>
-                        <v-expansion-panel>
-                            <v-expansion-panel-title>
-                                <v-icon class="mr-2">mdi-message-text</v-icon>
-                                Full LLM Response
-                            </v-expansion-panel-title>
-                            <v-expansion-panel-text>
-                                <div class="markdown-content" v-html="renderMarkdown(response.full_response)"></div>
-                            </v-expansion-panel-text>
-                        </v-expansion-panel>
-                    </v-expansion-panels>
-                </div>
+            <template v-if="!response.error && response.full_response">
+                <!-- Display the full response with Markdown rendering -->
+                <div class="markdown-content mt-3" v-html="renderMarkdown(response.full_response)"></div>
 
                 <!-- Install Button -->
-                <div v-if="response.automation_yaml" class="action-section mt-4">
+                <div v-if="extractedYaml" class="action-section mt-4">
                     <v-btn color="success" variant="elevated" size="large" @click="handleInstallAutomation">
                         <v-icon left>mdi-download</v-icon>
                         Install Automation
@@ -71,10 +24,9 @@
             </template>
 
             <!-- Error Response -->
-            <template v-else>
+            <template v-else-if="response.error">
                 <v-alert type="error" class="mt-3" :title="errorTitle">
                     <div class="error-message markdown-content" v-html="renderMarkdown(response.error)"></div>
-
                     <!-- Raw response for debugging -->
                     <v-expansion-panels v-if="response.rawResponse" class="mt-3">
                         <v-expansion-panel>
@@ -111,19 +63,12 @@
 import { ref, computed, watch } from 'vue';
 import { useHATheme } from '@/composables/useHATheme';
 import { useMarkdown } from '@/composables/useMarkdown';
-import hljs from 'highlight.js/lib/core';
-import yaml from 'highlight.js/lib/languages/yaml';
-
-// Register YAML language for syntax highlighting
-hljs.registerLanguage('yaml', yaml);
 
 // Initialize HA theme and markdown
-const { haTheme } = useHATheme()
-const { renderMarkdown } = useMarkdown()
+useHATheme();
+const { renderMarkdown } = useMarkdown();
 
 interface AiResponse {
-    automation_yaml?: string;
-    explanation?: string;
     full_response?: string;
     error?: string;
     rawResponse?: string;
@@ -146,13 +91,15 @@ const emit = defineEmits<{
     'update:modelValue': [value: string];
 }>();
 
-const copying = ref(false);
 const internalPrompt = ref(props.modelValue);
 
 // Watch for external prompt changes (v-model)
-watch(() => props.modelValue, (newValue) => {
-    internalPrompt.value = newValue;
-});
+watch(
+    () => props.modelValue,
+    (newValue) => {
+        internalPrompt.value = newValue;
+    }
+);
 
 // Emit prompt changes for v-model
 watch(internalPrompt, (newValue) => {
@@ -164,30 +111,18 @@ const responseContainerClass = computed(() => ({
     'error-response': !!props.response?.error,
 }));
 
-const headerIcon = computed(() =>
-    props.response?.error ? 'mdi-alert-circle' : 'mdi-robot'
-);
+const headerIcon = computed(() => (props.response?.error ? 'mdi-alert-circle' : 'mdi-robot'));
+const headerIconColor = computed(() => (props.response?.error ? 'error' : 'primary'));
+const headerText = computed(() => (props.response?.error ? 'AItomations Assistant - Error' : 'AItomations Assistant'));
+const errorTitle = computed(() => 'Failed to Generate Automation');
 
-const headerIconColor = computed(() =>
-    props.response?.error ? 'error' : 'primary'
-);
-
-const headerText = computed(() =>
-    props.response?.error ? 'AItomations Assistant - Error' : 'AItomations Assistant'
-);
-
-const errorTitle = computed(() =>
-    'Failed to Generate Automation'
-);
-
-const highlightYaml = (code: string) => {
-    try {
-        return hljs.highlight(code, { language: 'yaml' }).value;
-    } catch (error) {
-        console.warn('YAML highlighting failed:', error);
-        return code;
-    }
+const extractYamlFromMarkdown = (markdown: string | undefined): string | null => {
+    if (!markdown) return null;
+    const match = markdown.match(/```yaml\n([\s\S]*?)\n```/);
+    return match ? match[1].trim() : null;
 };
+
+const extractedYaml = computed(() => extractYamlFromMarkdown(props.response?.full_response));
 
 const handleGenerate = () => {
     if (!internalPrompt.value.trim()) return;
@@ -195,24 +130,8 @@ const handleGenerate = () => {
 };
 
 const handleInstallAutomation = () => {
-    if (props.response?.automation_yaml) {
-        emit('install-automation', props.response.automation_yaml);
-    }
-};
-
-const copyYaml = async () => {
-    if (!props.response?.automation_yaml) return;
-
-    try {
-        copying.value = true;
-        await navigator.clipboard.writeText(props.response.automation_yaml);
-
-        setTimeout(() => {
-            copying.value = false;
-        }, 2000);
-    } catch (error) {
-        console.error('Failed to copy YAML:', error);
-        copying.value = false;
+    if (extractedYaml.value) {
+        emit('install-automation', extractedYaml.value);
     }
 };
 </script>
@@ -225,70 +144,8 @@ const copyYaml = async () => {
     font-size: 1.1rem;
 }
 
-.explanation-section,
-.yaml-section,
-.full-response-section,
 .action-section {
     margin-bottom: 1rem;
-}
-
-.code-container {
-    position: relative;
-    background-color: var(--ha-card-background-color);
-    border-radius: 4px;
-    overflow: visible;
-    /* Changed from hidden to visible */
-}
-
-.yaml-code {
-    margin: 0 !important;
-    padding: 16px !important;
-    background-color: var(--ha-card-background-color) !important;
-    color: var(--ha-primary-text-color) !important;
-    border: none !important;
-    border-radius: 4px !important;
-    overflow-x: auto;
-    overflow-y: visible !important;
-    /* Ensure vertical content is not clipped */
-    font-size: 0.875rem;
-    line-height: 1.4;
-    filter: brightness(0.95);
-    white-space: pre-wrap;
-    /* Ensure proper line wrapping */
-    word-wrap: break-word;
-    min-height: auto !important;
-    /* Remove any min-height constraints */
-    max-height: none !important;
-    /* Remove any max-height constraints */
-    display: block !important;
-    /* Ensure proper block display */
-}
-
-/* Fix any potential masking issues */
-.yaml-code,
-.yaml-code * {
-    -webkit-mask-image: none !important;
-    mask-image: none !important;
-    -webkit-mask: none !important;
-    mask: none !important;
-}
-
-/* Ensure the pre element doesn't clip content */
-.code-container pre {
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    white-space: pre-wrap !important;
-    word-wrap: break-word !important;
-}
-
-.copy-button {
-    opacity: 0.7;
-    transition: opacity 0.2s;
-}
-
-.copy-button:hover {
-    opacity: 1;
 }
 
 .markdown-content {
@@ -336,10 +193,14 @@ const copyYaml = async () => {
     padding: 1rem;
     border-radius: 4px;
     overflow-x: auto;
-    overflow-y: visible !important;
-    /* Ensure vertical scrolling works */
     border: 1px solid var(--ha-divider-color);
     filter: brightness(0.95);
+}
+
+.markdown-content :deep(pre code) {
+    border: none;
+    padding: 0;
+    filter: none;
 }
 
 .markdown-content :deep(blockquote) {

@@ -19,6 +19,84 @@ WORKSPACE_PATH="/workspace"
 DEVELOPMENT=${DEVELOPMENT:-false}
 SKIP_FRONTEND=${SKIP_FRONTEND:-false}
 SKIP_DOCKER=${SKIP_DOCKER:-false}
+CLEAN=${CLEAN:-false}
+
+# Check for --clean parameter
+if [[ "$1" == "--clean" ]] || [[ "$CLEAN" == "true" ]]; then
+    CLEAN=true
+    print_status() {
+        echo -e "${YELLOW}➤${NC} $1"
+    }
+    
+    print_success() {
+        echo -e "${GREEN}✓${NC} $1"
+    }
+    
+    print_error() {
+        echo -e "${RED}✗${NC} $1"
+    }
+    
+    echo -e "${YELLOW}This will delete all build artifacts and caches!${NC}"
+    
+    # print_status "Stopping any running processes..."
+    # pkill -f "pnpm" 2>/dev/null || true
+    # pkill -f "vite" 2>/dev/null || true
+    # pkill -f "node" 2>/dev/null || true
+    # sleep 2
+    
+    print_status "Cleaning frontend build artifacts..."
+    if [ -d "${LOCAL_PATH}/src/frontend" ]; then
+        cd "${LOCAL_PATH}/src/frontend"
+        
+        # Remove all build artifacts
+        rm -rf dist/ 2>/dev/null || true
+        rm -rf node_modules/.vite/ 2>/dev/null || true
+        rm -rf node_modules/.cache/ 2>/dev/null || true
+        rm -rf .vite/ 2>/dev/null || true
+        
+        # Option to remove node_modules entirely
+        if [ -d "node_modules" ]; then
+            print_status "Removing node_modules (this may take a moment)..."
+            rm -rf node_modules/ 2>/dev/null || true
+        fi
+        
+        print_success "Frontend artifacts cleaned"
+    fi
+    
+    print_status "Cleaning backend dist directory..."
+    rm -rf "${LOCAL_PATH}/src/backend/dist/" 2>/dev/null || true
+    mkdir -p "${LOCAL_PATH}/src/backend/dist/"
+    print_success "Backend dist cleaned"
+    
+    print_status "Cleaning remote build cache..."
+    ssh -o IgnoreUnknown=UseKeychain "${REMOTE_USER}@${HA_HOST}" "
+        echo 'Cleaning Docker build cache...'
+        docker system prune -f 2>/dev/null || true
+        
+        echo 'Removing existing addon containers...'
+        docker ps -a | grep '${ADDON_NAME}' | awk '{print \$1}' | xargs -r docker rm -f 2>/dev/null || true
+        
+        echo 'Removing existing addon images...'
+        docker images | grep '${ADDON_NAME}' | awk '{print \$3}' | xargs -r docker rmi -f 2>/dev/null || true
+        
+        echo 'Cleaning addon directory...'
+        rm -rf '${REMOTE_PATH}/src/backend/dist/' 2>/dev/null || true
+    " 2>/dev/null || print_error "Could not clean remote cache (continuing anyway)"
+    
+    print_success "Remote cache cleaned"
+    
+    print_status "Clearing pnpm cache..."
+    cd "${LOCAL_PATH}/src/frontend" 2>/dev/null || true
+    pnpm store prune 2>/dev/null || print_error "Could not clear pnpm cache (continuing anyway)"
+    
+    echo -e "${GREEN}🧹 Nuclear clean completed!${NC}"
+    echo -e "${YELLOW}Continuing with fresh deployment...${NC}"
+    echo ""
+    
+    # Force full rebuild
+    SKIP_FRONTEND=false
+    SKIP_DOCKER=false
+fi
 
 echo -e "${GREEN}🚀 Deploying AItomations Add-on${NC}"
 
@@ -45,6 +123,11 @@ frontend_needs_build() {
         return 1
     fi
     
+    # If CLEAN was run, always build
+    if [ "$CLEAN" = "true" ]; then
+        return 0
+    fi
+    
     # If dist doesn't exist, we need to build
     if [ ! -d "$dist_dir" ]; then
         return 0
@@ -68,6 +151,11 @@ docker_needs_rebuild() {
     # If SKIP_DOCKER is set, never rebuild
     if [ "$SKIP_DOCKER" = "true" ]; then
         return 1
+    fi
+    
+    # If CLEAN was run, always rebuild
+    if [ "$CLEAN" = "true" ]; then
+        return 0
     fi
     
     # Check if Docker-related files changed
@@ -216,6 +304,9 @@ echo "4. Start the add-on and open the Web UI"
 # Show deployment summary
 echo ""
 echo -e "${YELLOW}Deployment Summary:${NC}"
+if [ "$CLEAN" = "true" ]; then
+    echo "- Clean mode: Nuclear clean performed"
+fi
 echo "- Frontend build: $([ "$SKIP_FRONTEND" = "true" ] && echo "Skipped" || echo "$(frontend_needs_build && echo "Built" || echo "Cached")")"
 echo "- Docker image: $([ "$SKIP_DOCKER" = "true" ] && echo "Skipped" || echo "$(docker_needs_rebuild && echo "Rebuilt" || echo "Cached")")"
 echo "- Mode: $([ "$DEVELOPMENT" = "true" ] && echo "Development" || echo "Production")"

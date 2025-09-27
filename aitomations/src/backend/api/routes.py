@@ -9,7 +9,6 @@ import requests
 # These imports were missing from the previous version
 from ..llm.gemini import GeminiProvider
 from ..llm.ollama import OllamaProvider
-from ..utils import extract_json_from_string
 
 api_blueprint = Blueprint('api', __name__)
 
@@ -117,24 +116,47 @@ def generate_automation():
         
         ha_context, context_summary = _get_ha_context()
 
-        creation_prompt = f"""You are an expert Home Assistant automation assistant...
+        creation_prompt = f"""You are an expert Home Assistant automation assistant. Your goal is to generate a single, complete YAML configuration for an automation based on the user's request and the provided context.
+
+**Instructions:**
+1.  Analyze the user's request and the available Home Assistant context (entities, services).
+2.  Create a valid Home Assistant automation in YAML format.
+3.  Your response **MUST** be in Markdown format.
+4.  The response should contain two parts:
+    - An "Explanation" section that describes what the automation does in simple terms.
+    - A "YAML" section containing the automation configuration inside a `yaml` code block.
+
 **Home Assistant Context:**
+```json
 {json.dumps(ha_context, indent=2)}
 **User Request:**
 {prompt}
-... (rest of your prompt) ...
+Example Response Format:
+
+## Explanation
+This automation will turn on the kitchen light when motion is detected.
+
+```yaml
+alias: Turn on Kitchen Light on Motion
+description: ''
+trigger:
+  - platform: state
+    entity_id: binary_sensor.kitchen_motion
+    to: 'on'
+action:
+  - service: light.turn_on
+    target:
+      entity_id: light.kitchen_light
+mode: single
+```
+
 """
-        
-        # New logging for the full prompt
         print(f"[DEBUG] Full prompt sent to LLM:\n---\n{creation_prompt}\n---")
-        
         llm_response = llm_provider.generate(creation_prompt, options)
         llm_response['context_summary'] = context_summary
         llm_response['prompt'] = prompt
-        
         return jsonify(llm_response)
     except Exception as e:
-        # Enhanced error logging
         print(f"[ERROR] An exception occurred in generate_automation: {str(e)}")
         import traceback
         traceback.print_exc()
@@ -150,16 +172,25 @@ def edit_automation():
         config_response = requests.get(f"{HA_API_URL}/config/automation/config/{data['automation_id']}", headers=HA_HEADERS)
         config_response.raise_for_status()
         existing_config = config_response.json()
-        
+
         if AITOMATIONS_METADATA_KEY in existing_config:
             del existing_config[AITOMATIONS_METADATA_KEY]
-        
         existing_yaml = yaml.dump(existing_config)
+
         ha_context, context_summary = _get_ha_context()
         options = get_options()
         llm_provider = get_llm_provider(options.get('llm_provider', 'ollama'))
-        
-        edit_prompt = f"""You are an expert Home Assistant automation editor...
+
+        edit_prompt = f"""You are an expert Home Assistant automation editor. Your goal is to modify an existing automation's YAML based on a user's request.
+
+**Instructions:**
+1.  Analyze the user's modification request and the existing YAML.
+2.  Generate the **complete, new** YAML for the modified automation.
+3.  Your response **MUST** be in Markdown format.
+4.  The response should contain two parts:
+    - An "Explanation" section that describes the changes you made.
+    - A "YAML" section containing the **full** modified automation configuration inside a `yaml` code block.
+
 **Existing Automation YAML:**
 ```yaml
 {existing_yaml}
