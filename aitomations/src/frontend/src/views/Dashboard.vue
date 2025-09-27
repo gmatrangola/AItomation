@@ -1,47 +1,35 @@
 <template>
-    <v-container>
-        <v-row>
-            <v-col>
-                <h1>AItomations Dashboard</h1>
-                <p class="text-subtitle-1">Describe your desired automation or ask a question about your setup.</p>
-            </v-col>
-        </v-row>
-
-        <!-- Chat Interface -->
-        <v-row>
-            <v-col>
-                <v-card>
-                    <v-card-text>
-                        <AIChat v-model="prompt" :response="aiResponse" :generating="generating"
-                            @generate-prompt="handleGeneratePrompt" @install-automation="handleInstallAutomation" />
-                    </v-card-text>
-                </v-card>
-            </v-col>
-        </v-row>
+    <v-container class="ha-themed-container">
+        <v-btn @click="debugTheme" color="error" class="mb-4">
+            Debug HA Theme
+        </v-btn>
+        <AIChat v-model="prompt" :response="aiResponse" :generating="generating" @generate-prompt="handleGeneratePrompt"
+            @install-automation="handleInstallAutomation" />
 
         <v-divider class="my-6"></v-divider>
 
-        <!-- Existing Automation List -->
-        <v-row>
-            <v-col>
-                <v-card>
-                    <v-card-title>Existing Automations</v-card-title>
-                    <v-data-table :headers="headers" :items="automations" :loading="loading" item-key="id">
-                        <template v-slot:item.actions="{ item }">
-                            <v-btn size="small" :disabled="!item.is_editable" @click="handleEditAutomation(item)">
-                                Edit with AI
-                            </v-btn>
-                        </template>
-                    </v-data-table>
-                </v-card>
-            </v-col>
-        </v-row>
+        <!-- Automation List -->
+        <v-card class="ha-themed-card">
+            <v-card-title class="ha-themed-title">Existing Automations</v-card-title>
+            <v-data-table :headers="headers" :items="automations" :loading="loading" item-key="id"
+                class="ha-themed-table">
+                <template v-slot:item.actions="{ item }">
+                    <v-btn size="small" :disabled="!item.is_editable" @click="handleEditAutomation(item)"
+                        class="ha-themed-button">
+                        Edit with AI
+                    </v-btn>
+                </template>
+            </v-data-table>
+        </v-card>
     </v-container>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import AIChat from '../components/AIChat.vue';
+import { useHATheme } from '../composables/useHATheme';
+
+const { haTheme, loadHATheme } = useHATheme()
 
 interface Automation {
     id: string;
@@ -160,5 +148,46 @@ const fetchAutomations = async () => {
     }
 };
 
+const debugTheme = () => {
+    console.log('=== Manual Theme Debug ===')
+    console.log('Current haTheme:', haTheme.value)
+
+    // Force reload theme
+    loadHATheme()
+
+    // Check parent window directly
+    try {
+        const parentDoc = window.parent.document
+        const computedStyle = getComputedStyle(parentDoc.documentElement)
+
+        console.log('Parent body classes:', parentDoc.body.className)
+        console.log('Parent html classes:', parentDoc.documentElement.className)
+
+        // Check for HA app element
+        const haApp = parentDoc.querySelector('home-assistant')
+        if (haApp) {
+            console.log('HA app classes:', haApp.className)
+            console.log('HA app data attributes:', Array.from(haApp.attributes).map(attr => `${attr.name}="${attr.value}"`))
+        }
+
+        // Check all CSS custom properties
+        const allStyles = Array.from(parentDoc.styleSheets)
+            .flatMap(sheet => {
+                try {
+                    return Array.from(sheet.cssRules)
+                } catch {
+                    return []
+                }
+            })
+            .filter(rule => rule.selectorText && rule.selectorText.includes(':root'))
+
+        console.log('Root CSS rules found:', allStyles.length)
+    } catch (error) {
+        console.error('Debug error:', error)
+    }
+}
+
 onMounted(fetchAutomations);
 </script>
+
+<style scoped></style>

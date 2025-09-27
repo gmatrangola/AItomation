@@ -1,0 +1,293 @@
+/* Global Home Assistant Theme Integration */
+
+/* Root-level HA theme variables - injected by useHATheme composable */
+:root {
+    --ha-primary-color: #03a9f4;
+    --ha-primary-text-color: #212121;
+    --ha-primary-background-color: #fafafa;
+    --ha-card-background-color: #ffffff;
+    --ha-secondary-text-color: #757575;
+    --ha-divider-color: #e0e0e0;
+    --ha-accent-color: #ff9800;
+    --ha-error-color: #f44336;
+    --ha-warning-color: #ff9800;
+    --ha-success-color: #4caf50;
+    --ha-is-dark: 0;
+}
+
+/* Global application theming */
+.v-application {
+    background-color: var(--ha-primary-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+}
+
+/* All cards use HA theme */
+.v-card {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+}
+
+.v-card-title {
+    color: var(--ha-primary-text-color) !important;
+    background-color: var(--ha-card-background-color) !important;
+}
+
+.v-card-text {
+    color: var(--ha-primary-text-color) !important;
+}
+
+/* All containers use HA theme */
+.v-container {
+    background-color: var(--ha-primary-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+}
+
+/* Data tables use HA theme */
+.v-data-table {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+}
+
+.v-data-table .v-data-table__th {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    border-bottom: 1px solid var(--ha-divider-color) !important;
+    filter: brightness(0.9);
+    /* Slightly darker than card background */
+}
+
+.v-data-table .v-data-table__td {
+    color: var(--ha-primary-text-color) !important;
+    border-bottom: 1px solid var(--ha-divider-color) !important;
+}
+
+.v-data-table tbody tr {
+    background-color: var(--ha-card-background-color) !important;
+}
+
+.v-data-table tbody tr:hover {
+    background-color: var(--ha-card-background-color) !important;
+    filter: brightness(0.95);
+    /* Slightly different brightness on hover */
+}
+
+/* All buttons use HA theme */
+.v-btn {
+    background-color: var(--ha-primary-color) !important;
+    color: #ffffff !important;
+    /* Always white text on buttons for better contrast */
+}
+
+.v-btn:disabled {
+    background-color: var(--ha-divider-color) !important;
+    color: var(--ha-secondary-text-color) !important;
+    opacity: 0.6;
+}
+
+.v-btn--variant-outlined {
+    background-color: transparent !important;
+    color: var(--ha-primary-color) !important;
+    border-color: var(--ha-primary-color) !important;
+}
+
+.v-btn--variant-text {
+    background-color: transparent !important;
+    color: var(--ha-primary-color) !important;
+}
+
+/* Text inputs use HA theme */
+.v-textarea textarea,
+.v-text-field input {
+    opacity: 1 !important;
+    color: var(--ha-primary-text-color) !important;
+    background-color: var(--ha-card-background-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+    border-radius: 4px !important;
+    padding: 12px !important;
+}
+
+.v-textarea .v-field__field,
+.v-text-field .v-field__field {
+    background-color: var(--ha-card-background-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+    border-radius: 4px !important;
+}
+
+.v-textarea .v-field__input,
+.v-text-field .v-field__input {
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+    color: var(--ha-primary-text-color) !important;
+    background-color: transparent !important;
+}
+
+.v-textarea .v-field-label,
+.v-text-field .v-field-label {
+    color: var(--ha-secondary-text-color) !important;
+}
+
+.v-textarea .v-field-label--floating,
+.v-text-field .v-field-label--floating {
+    color: var(--ha-primary-color) !important;
+}
+
+.v-textarea .v-field__outline,
+.v-text-field .v-field__outline {
+    display: none !important;
+}
+
+/* Alerts and other components */
+.v-alert {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+}
+
+.v-alert--type-error {
+    border-left: 4px solid var(--ha-error-color) !important;
+}
+
+.v-alert--type-success {
+    border-left: 4px solid var(--ha-success-color) !important;
+}
+
+.v-alert--type-warning {
+    border-left: 4px solid var(--ha-warning-color) !important;
+}
+
+/* Dividers */
+.v-divider {
+    border-color: var(--ha-divider-color) !important;
+}
+
+/* Expansion panels */
+.v-expansion-panel {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+}
+
+.v-expansion-panel-title {
+    color: var(--ha-primary-text-color) !important;
+    background-color: var(--ha-card-background-color) !important;
+}
+
+.v-expansion-panel-text {
+    color: var(--ha-primary-text-color) !important;
+    background-color: var(--ha-card-background-color) !important;
+}
+
+/* Progress indicators */
+.v-progress-linear {
+    background-color: var(--ha-divider-color) !important;
+}
+
+.v-progress-linear .v-progress-linear__determinate {
+    background-color: var(--ha-primary-color) !important;
+}
+
+/* Icons */
+.v-icon {
+    color: var(--ha-primary-text-color) !important;
+}
+
+.v-btn .v-icon {
+    color: inherit !important;
+    /* Let button color override */
+}
+
+/* Code blocks and pre elements */
+pre,
+code,
+.yaml-code {
+    font-family: 'Roboto Mono', Monaco, 'Cascadia Code', 'Segoe UI Mono', Consolas, 'Courier New', monospace !important;
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+    border-radius: 4px;
+    padding: 12px;
+    filter: brightness(0.95);
+    /* Slightly different from card background */
+}
+
+/* AI Response specific styling */
+.ai-response-container {
+    background-color: var(--ha-card-background-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+    border-radius: 8px;
+    color: var(--ha-primary-text-color) !important;
+}
+
+.success-response {
+    border-left: 4px solid var(--ha-success-color) !important;
+}
+
+.error-response {
+    border-left: 4px solid var(--ha-error-color) !important;
+}
+
+/* Loading states */
+.v-skeleton-loader {
+    background-color: var(--ha-card-background-color) !important;
+}
+
+.v-overlay {
+    background-color: var(--ha-primary-background-color) !important;
+}
+
+/* Tooltips */
+.v-tooltip .v-overlay__content {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+}
+
+/* Menus and dropdowns */
+.v-menu .v-overlay__content {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+}
+
+.v-list {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+}
+
+.v-list-item {
+    color: var(--ha-primary-text-color) !important;
+}
+
+.v-list-item:hover {
+    background-color: var(--ha-card-background-color) !important;
+    filter: brightness(0.95);
+}
+
+/* Fix any remaining white backgrounds */
+.v-field--variant-filled .v-field__overlay,
+.v-field--variant-solo .v-field__overlay,
+.v-field--variant-solo-inverted .v-field__overlay,
+.v-field--variant-solo-filled .v-field__overlay {
+    background-color: var(--ha-card-background-color) !important;
+}
+
+/* Tabs */
+.v-tabs {
+    background-color: var(--ha-card-background-color) !important;
+}
+
+.v-tab {
+    color: var(--ha-secondary-text-color) !important;
+}
+
+.v-tab--selected {
+    color: var(--ha-primary-color) !important;
+}
+
+/* Snackbars */
+.v-snackbar {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    border: 1px solid var(--ha-divider-color) !important;
+}

@@ -1,65 +1,45 @@
 # syntax=docker/dockerfile:1
-
-# Declare BUILD_FROM globally, before any FROM statements.
 ARG BUILD_FROM
 
-# --- Builder Stage ---
-# This stage builds the Vue frontend
+# --- Builder Stage with better caching ---
 FROM node:20-alpine AS builder
 
-# Install pnpm
+# Install pnpm first (this layer rarely changes)
 RUN npm install -g pnpm
 
 WORKDIR /usr/src/app
 
-# Copy only the necessary package manager files
+# Copy dependency files first (for better Docker layer caching)
 COPY src/frontend/package.json src/frontend/pnpm-lock.yaml ./
 
-# Install dependencies. This step is cached as long as lock file doesn't change.
-RUN pnpm install --reporter=append-only
+# Install dependencies (this layer is cached if deps don't change)
+RUN pnpm install --frozen-lockfile --reporter=append-only
 
-# Copy the rest of the frontend source code
+# Copy source and build (only this layer rebuilds when code changes)
 COPY src/frontend/ ./
-
-# Build the static assets
 RUN pnpm build
 
-
 # --- Final Stage ---
-# This stage builds the final, lean add-on image
 FROM ${BUILD_FROM}
 
 WORKDIR /usr/src/app
 
-# Install system dependencies for the Python backend
-RUN apk add --no-cache \
-    python3 \
-    py3-pip
-
-# Copy the requirements file first to leverage Docker cache
+# Install Python deps (cache this layer)
 COPY requirements.txt ./
+RUN apk add --no-cache python3 py3-pip && \
+    pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
-# Copy Python dependencies and install them
-RUN pip3 install \
-    --no-cache-dir \
-    --break-system-packages \
-    -r requirements.txt
-
-# **FIX**: Copy the backend source code into a 'src' directory to match our package structure
+# Copy backend code
 COPY src/backend/ ./src/backend/
 
-# **FIX**: Copy the pre-built frontend into the correct location within the new structure
+# Copy pre-built frontend
 COPY --from=builder /usr/src/app/dist ./src/backend/dist
 
-# Create the service directory and copy the run script
+# Copy service files
 RUN mkdir -p /etc/services.d/aitomations
 COPY run.sh /etc/services.d/aitomations/run
 RUN chmod +x /etc/services.d/aitomations/run
 
-# Copy rootfs contents
 COPY rootfs/ /
 
-# Expose the port the backend will run on
 EXPOSE 8099
-
-# The base image already has the correct ENTRYPOINT set up
