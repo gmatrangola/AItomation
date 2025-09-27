@@ -291,3 +291,86 @@ code,
     color: var(--ha-primary-text-color) !important;
     border: 1px solid var(--ha-divider-color) !important;
 }
+
+/* Syntax highlighting theme overrides */
+.hljs {
+    background-color: var(--ha-card-background-color) !important;
+    color: var(--ha-primary-text-color) !important;
+    filter: brightness(0.95);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+    color: var(--ha-primary-color) !important;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-literal,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-addition {
+    color: var(--ha-success-color) !important;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+    color: var(--ha-secondary-text-color) !important;
+}
+
+.hljs-number,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-link,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+    color: var(--ha-accent-color) !important;
+}
+
+.hljs-emphasis {
+    font-style: italic;
+}
+
+.hljs-strong {
+    font-weight: bold;
+}
+
+/* Add this to the end of your ha-theme.css file */
+
+/* Fix code block clipping issues */
+pre, code, .yaml-code {
+  font-family: 'Roboto Mono', Monaco, 'Cascadia Code', 'Segoe UI Mono', Consolas, 'Courier New', monospace !important;
+  background-color: var(--ha-card-background-color) !important;
+  color: var(--ha-primary-text-color) !important;
+  border: 1px solid var(--ha-divider-color) !important;
+  border-radius: 4px;
+  padding: 12px;
+  filter: brightness(0.95);
+  overflow: visible !important; /* Prevent clipping */
+  white-space: pre-wrap !important; /* Proper line wrapping */
+  word-wrap: break-word !important;
+  -webkit-mask-image: none !important; /* Remove any masking */
+  mask-image: none !important;
+  -webkit-mask: none !important;
+  mask: none !important;
+}
+
+/* Ensure all text areas and input fields don't have masking issues */
+.v-textarea .v-field__input,
+.v-text-field .v-field__input {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+  -webkit-mask: none !important;
+  mask: none !important;
+  overflow: visible !important;
+}

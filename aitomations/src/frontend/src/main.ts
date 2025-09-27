@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
-import router from '@/router' // Import the router
+import router from '@/router'
 
 // Vuetify
 import 'vuetify/styles'
@@ -8,9 +8,14 @@ import { createVuetify } from 'vuetify'
 import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import '@mdi/font/css/materialdesignicons.css'
+
+// Import global HA theme styles
 import '@/styles/ha-theme.css'
 
-// In main.ts
+// Import highlight.js CSS theme
+import 'highlight.js/styles/github-dark.css' // Dark theme
+// Or use: import 'highlight.js/styles/github.css' // Light theme
+
 const vuetify = createVuetify({
   components,
   directives,
@@ -28,11 +33,11 @@ const vuetify = createVuetify({
           primary: '#1976d2',
         }
       }
-    }
+    },
   },
 })
 
 createApp(App)
-  .use(router) // Tell the app to use Vue Router
+  .use(router)
   .use(vuetify)
   .mount('#app')
