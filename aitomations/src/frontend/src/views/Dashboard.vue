@@ -1,32 +1,45 @@
 <template>
-    <v-container class="ha-themed-container">
+    <div class="dashboard">
         <AIChat v-model="prompt" :response="aiResponse" :generating="generating" @generate-prompt="handleGeneratePrompt"
             @install-automation="handleInstallAutomation" />
 
         <v-divider class="my-6"></v-divider>
 
         <!-- Automation List -->
-        <v-card class="ha-themed-card">
-            <v-card-title class="ha-themed-title">Existing Automations</v-card-title>
-            <v-data-table :headers="headers" :items="automations" :loading="loading" item-key="id"
-                class="ha-themed-table">
-                <template v-slot:item.actions="{ item }">
-                    <v-btn size="small" :disabled="!item.is_editable" @click="handleEditAutomation(item)"
-                        class="ha-themed-button">
-                        Edit with AI
-                    </v-btn>
-                </template>
-            </v-data-table>
+        <v-card class="automation-list-card" elevation="2">
+            <v-card-title class="automation-list-title">
+                <v-icon class="mr-2">mdi-cog-outline</v-icon>
+                Existing Automations
+            </v-card-title>
+            <v-card-text>
+                <v-data-table :headers="headers" :items="automations" :loading="loading" item-key="id"
+                    class="automation-table" :items-per-page="10">
+                    <template v-slot:item.state="{ item }">
+                        <v-chip :color="item.state === 'on' ? 'success' : 'default'" size="small">
+                            {{ item.state }}
+                        </v-chip>
+                    </template>
+                    <template v-slot:item.prompt="{ item }">
+                        <span class="text-truncate" style="max-width: 200px;">
+                            {{ item.prompt || 'N/A' }}
+                        </span>
+                    </template>
+                    <template v-slot:item.actions="{ item }">
+                        <v-btn size="small" :disabled="!item.is_editable" @click="handleEditAutomation(item)"
+                            color="primary" variant="outlined">
+                            <v-icon start>mdi-pencil</v-icon>
+                            Edit with AI
+                        </v-btn>
+                    </template>
+                </v-data-table>
+            </v-card-text>
         </v-card>
-    </v-container>
+    </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import AIChat from '../components/AIChat.vue';
-import { useHATheme } from '../composables/useHATheme';
-
-const { haTheme } = useHATheme()
+import AIChat from '@/components/AIChat.vue';
 
 interface Automation {
     id: string;
@@ -39,8 +52,7 @@ interface Automation {
 }
 
 interface AiResponse {
-    automation_yaml?: string;
-    explanation?: string;
+    full_response?: string;
     error?: string;
     rawResponse?: string;
 }
@@ -49,11 +61,11 @@ interface AiResponse {
 const loading = ref(true);
 const automations = ref<Automation[]>([]);
 const headers = [
-    { title: 'Alias', value: 'alias' },
-    { title: 'Entity ID', value: 'entity_id' },
-    { title: 'State', value: 'state' },
-    { title: 'Prompt', value: 'prompt' },
-    { title: 'Actions', value: 'actions', sortable: false },
+    { title: 'Alias', value: 'alias', width: '25%' },
+    { title: 'Entity ID', value: 'entity_id', width: '20%' },
+    { title: 'State', value: 'state', width: '10%' },
+    { title: 'Prompt', value: 'prompt', width: '30%' },
+    { title: 'Actions', value: 'actions', sortable: false, width: '15%' },
 ];
 
 // Refs for chat interface
@@ -119,16 +131,19 @@ const handleInstallAutomation = async (yaml: string) => {
         aiResponse.value = null;
         prompt.value = '';
 
-        // You might want to show a success message here
         console.log('Automation installed successfully');
     } catch (error) {
         console.error('Failed to install automation:', error);
-        // You might want to show an error message here
     }
 };
 
 const handleEditAutomation = (automation: Automation) => {
-    // Implement edit functionality
+    // Pre-fill the prompt with existing automation info for editing
+    if (automation.prompt) {
+        prompt.value = `Edit this automation: "${automation.alias}" - ${automation.prompt}`;
+    } else {
+        prompt.value = `Edit automation: "${automation.alias}" (Entity: ${automation.entity_id})`;
+    }
     console.log('Edit automation:', automation);
 };
 
@@ -139,7 +154,7 @@ const fetchAutomations = async () => {
         if (!response.ok) throw new Error('Failed to fetch automations');
         automations.value = await response.json();
     } catch (error) {
-        console.error(error);
+        console.error('Failed to fetch automations:', error);
     } finally {
         loading.value = false;
     }
@@ -148,4 +163,30 @@ const fetchAutomations = async () => {
 onMounted(fetchAutomations);
 </script>
 
-<style scoped></style>
+<style scoped>
+.dashboard {
+    max-width: 100%;
+}
+
+.automation-list-card {
+    background-color: var(--ha-card-background);
+    border: 1px solid var(--ha-border);
+}
+
+.automation-list-title {
+    color: var(--ha-primary-text);
+    font-size: 1.2rem;
+    font-weight: 500;
+}
+
+.automation-table {
+    background-color: transparent;
+}
+
+.text-truncate {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+}
+</style>

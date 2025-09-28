@@ -55,4 +55,3 @@ The `README.md` provides detailed instructions for setting up a Home Assistant O
 
 -   **Backend**: The Flask app follows standard Flask patterns. It uses a base `LLM` class in `aitomations/src/llm/base.py` which other LLM providers inherit from.
 -   **Frontend**: The Vue app uses the Composition API (`<script setup>`). Composables for shared logic are located in `aitomations/src/frontend/src/composables/`.
--   **Styling**: The frontend uses Vuetify for components and `useHATheme.ts` to dynamically adapt to the Home Assistant theme colors.

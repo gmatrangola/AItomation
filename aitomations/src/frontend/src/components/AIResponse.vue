@@ -1,12 +1,12 @@
 <template>
     <div class="ai-response">
         <!-- Display the full response with Markdown rendering -->
-        <div class="markdown-content mt-3" v-html="renderMarkdown(response)"></div>
+        <div class="markdown-content" v-html="renderMarkdown(response)"></div>
 
         <!-- Install Button -->
         <div v-if="extractedYaml" class="action-section mt-4">
             <v-btn color="success" variant="elevated" size="large" @click="handleInstallAutomation">
-                <v-icon left>mdi-download</v-icon>
+                <v-icon start>mdi-download</v-icon>
                 Install Automation
             </v-btn>
         </div>
@@ -46,6 +46,12 @@ const handleInstallAutomation = () => {
 
 <style scoped>
 .action-section {
-    margin-bottom: 1rem;
+    text-align: center;
+    margin-top: 1.5rem;
+}
+
+/* Markdown content inherits colors from parent CSS variables */
+.markdown-content {
+    line-height: 1.6;
 }
 </style>
