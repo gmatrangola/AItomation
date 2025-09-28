@@ -4,16 +4,7 @@
         <div v-if="response" class="ai-response-container mb-4 pa-3" :class="responseContainerClass">
             <!-- Success Response -->
             <template v-if="!response.error && response.full_response">
-                <!-- Display the full response with Markdown rendering -->
-                <div class="markdown-content mt-3" v-html="renderMarkdown(response.full_response)"></div>
-
-                <!-- Install Button -->
-                <div v-if="extractedYaml" class="action-section mt-4">
-                    <v-btn color="success" variant="elevated" size="large" @click="handleInstallAutomation">
-                        <v-icon left>mdi-download</v-icon>
-                        Install Automation
-                    </v-btn>
-                </div>
+                <AIResponse :response="response.full_response" @install-automation="handleInstallAutomation" />
             </template>
 
             <!-- Error Response -->
@@ -56,6 +47,7 @@
 import { ref, computed, watch } from 'vue';
 import { useHATheme } from '@/composables/useHATheme';
 import { useMarkdown } from '@/composables/useMarkdown';
+import AIResponse from './AIResponse.vue';
 
 // Initialize HA theme and markdown
 useHATheme();
@@ -109,23 +101,13 @@ const headerIconColor = computed(() => (props.response?.error ? 'error' : 'prima
 const headerText = computed(() => (props.response?.error ? 'AItomations Assistant - Error' : 'AItomations Assistant'));
 const errorTitle = computed(() => 'Failed to Generate Automation');
 
-const extractYamlFromMarkdown = (markdown: string | undefined): string | null => {
-    if (!markdown) return null;
-    const match = markdown.match(/```yaml\n([\s\S]*?)\n```/);
-    return match ? match[1].trim() : null;
-};
-
-const extractedYaml = computed(() => extractYamlFromMarkdown(props.response?.full_response));
-
 const handleGenerate = () => {
     if (!internalPrompt.value.trim()) return;
     emit('generate-prompt', internalPrompt.value.trim());
 };
 
-const handleInstallAutomation = () => {
-    if (extractedYaml.value) {
-        emit('install-automation', extractedYaml.value);
-    }
+const handleInstallAutomation = (yaml: string) => {
+    emit('install-automation', yaml);
 };
 </script>
 
