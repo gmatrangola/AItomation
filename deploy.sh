@@ -9,6 +9,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 ADDON_NAME="aitomations"
+ADDON_SLUG="aitomations-creator"
 HA_HOST="ha-dev.local"
 REMOTE_USER="root"
 REMOTE_PATH="/addons/${ADDON_NAME}"
@@ -224,7 +225,14 @@ else
     print_status "No frontend directory found, skipping build"
 fi
 
-# Step 2: Sync files to Home Assistant
+# Step 2: Stop the add-on on Home Assistant
+print_status "Stopping add-on '${ADDON_SLUG}' on ${HA_HOST}..."
+ssh -o IgnoreUnknown=UseKeychain "${REMOTE_USER}@${HA_HOST}" "
+    ha addons stop 'local_${ADDON_SLUG}' || echo 'Add-on was not running.'
+"
+print_success "Add-on stop command issued"
+
+# Step 3: Sync files to Home Assistant
 print_status "Syncing files to ${HA_HOST}:${REMOTE_PATH}..."
 
 # Change back to workspace directory to ensure correct paths
@@ -251,7 +259,7 @@ rsync -avz \
 
 print_success "Files synced successfully"
 
-# Step 3: Verify important files were copied
+# Step 4: Verify important files were copied
 print_status "Verifying deployment on ${HA_HOST}..."
 ssh -o IgnoreUnknown=UseKeychain "${REMOTE_USER}@${HA_HOST}" "
     echo 'Checking essential files...'
@@ -261,7 +269,7 @@ ssh -o IgnoreUnknown=UseKeychain "${REMOTE_USER}@${HA_HOST}" "
     echo 'Dockerfile:' && ls -la '${REMOTE_PATH}/Dockerfile' 2>/dev/null || echo 'Missing Dockerfile'
 "
 
-# Step 4: Build Docker image (if needed)
+# Step 5: Build Docker image (if needed)
 if docker_needs_rebuild; then
     print_status "Building Docker image on ${HA_HOST}..."
     ssh -o IgnoreUnknown=UseKeychain "${REMOTE_USER}@${HA_HOST}" "
@@ -282,6 +290,41 @@ if docker_needs_rebuild; then
 else
     print_success "Docker image unchanged, skipping rebuild"
 fi
+
+# Step 6: Reload and Start Home Assistant add-on
+print_status "Reloading and starting add-on..."
+ssh -o IgnoreUnknown=UseKeychain "${REMOTE_USER}@${HA_HOST}" "
+    echo 'Reloading add-ons...'
+    ha addons reload
+    sleep 2
+    
+    echo 'Starting add-on...'
+    ha addons start local_'${ADDON_SLUG}'
+    
+    sleep 2
+    
+    echo 'Available add-ons:'
+    ha addons list | grep -i local_'${ADDON_NAME}' || echo 'Add-on not yet visible, try refreshing HA UI'
+"
+
+print_success "Deployment completed!"
+echo -e "${GREEN}🎉 AItomations add-on deployed successfully!${NC}"
+echo ""
+echo -e "${YELLOW}Next steps:${NC}"
+echo "1. Go to Home Assistant → Settings → Add-ons"
+echo "2. Look for 'AItomations Creator' under Local add-ons"
+echo "3. Install and configure with your Gemini API key"
+echo "4. Start the add-on and open the Web UI"
+
+# Show deployment summary
+echo ""
+echo -e "${YELLOW}Deployment Summary:${NC}"
+if [ "$CLEAN" = "true" ]; then
+    echo "- Clean mode: Nuclear clean performed"
+fi
+echo "- Frontend build: $([ "$SKIP_FRONTEND" = "true" ] && echo "Skipped" || echo "$(frontend_needs_build && echo "Built" || echo "Cached")")"
+echo "- Docker image: $([ "$SKIP_DOCKER" = "true" ] && echo "Skipped" || echo "$(docker_needs_rebuild && echo "Rebuilt" || echo "Cached")")"
+echo "- Mode: $([ "$DEVELOPMENT" = "true" ] && echo "Development" || echo "Production")"# Step 4: Build Docker image
 
 # Step 5: Reload Home Assistant add-ons
 print_status "Reloading Home Assistant add-ons..."
