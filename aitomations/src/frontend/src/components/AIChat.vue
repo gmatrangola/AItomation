@@ -2,13 +2,6 @@
     <div class="ai-chat-container">
         <!-- AI Response Display -->
         <div v-if="response" class="ai-response-container mb-4 pa-3" :class="responseContainerClass">
-            <div class="ai-response-header">
-                <v-icon :color="headerIconColor" class="mr-2">
-                    {{ headerIcon }}
-                </v-icon>
-                <span class="font-weight-bold">{{ headerText }}</span>
-            </div>
-
             <!-- Success Response -->
             <template v-if="!response.error && response.full_response">
                 <!-- Display the full response with Markdown rendering -->
@@ -26,7 +19,7 @@
             <!-- Error Response -->
             <template v-else-if="response.error">
                 <v-alert type="error" class="mt-3" :title="errorTitle">
-                    <div class="error-message markdown-content" v-html="renderMarkdown(response.error)"></div>
+                    <div class="error-message">{{ response.error }}</div>
                     <!-- Raw response for debugging -->
                     <v-expansion-panels v-if="response.rawResponse" class="mt-3">
                         <v-expansion-panel>

@@ -1,54 +1,57 @@
-import { computed } from 'vue'
-import { marked } from 'marked'
-import hljs from 'highlight.js/lib/core'
-import yaml from 'highlight.js/lib/languages/yaml'
-import python from 'highlight.js/lib/languages/python'
-import javascript from 'highlight.js/lib/languages/javascript'
-import json from 'highlight.js/lib/languages/json'
+import { marked } from 'marked';
+import hljs from 'highlight.js';
 
-// Register languages
-hljs.registerLanguage('yaml', yaml)
-hljs.registerLanguage('python', python)
-hljs.registerLanguage('javascript', javascript)
-hljs.registerLanguage('json', json)
+// Define the extension for syntax highlighting
+const highlightExtension = {
+  name: 'highlight',
+  level: 'block' as const, // This is a block-level extension
+  start(src: string) {
+    return src.match(/```(\w+)?\n/)?.index; // Find the start of a code block
+  },
+  tokenizer(src: string) {
+    const match = src.match(/^```(\w+)?\n([\s\S]+?)\n```\n?/);
+    if (match) {
+      const lang = match[1] || 'plaintext';
+      const code = match[2];
+      const token = {
+        type: 'highlight', // Custom token type
+        raw: match[0],
+        lang,
+        code,
+      };
+      return token;
+    }
+  },
+  renderer(token: any) {
+    const language = hljs.getLanguage(token.lang) ? token.lang : 'plaintext';
+    const highlightedCode = hljs.highlight(token.code, { language }).value;
+    return `<pre><code class="hljs language-${language}">${highlightedCode}</code></pre>`;
+  },
+};
+
+// Use the extension and set other global options
+marked.use({
+  extensions: [highlightExtension],
+  gfm: true, // Enable GitHub Flavored Markdown
+  breaks: true, // Convert single line breaks to <br>
+});
 
 export function useMarkdown() {
-  // Configure marked with syntax highlighting
-  marked.setOptions({
-    highlight: (code: string, lang: string) => {
-      if (lang && hljs.getLanguage(lang)) {
-        try {
-          return hljs.highlight(code, { language: lang }).value
-        } catch (err) {
-          console.warn('Syntax highlighting failed:', err)
-        }
-      }
-      // Auto-detect if no language specified
-      try {
-        return hljs.highlightAuto(code).value
-      } catch (err) {
-        return code
-      }
-    },
-    breaks: true,
-    gfm: true,
-  })
-
-  const renderMarkdown = (content: string): string => {
-    if (!content) return ''
-    
-    try {
-      return marked(content)
-    } catch (error) {
-      console.error('Markdown rendering failed:', error)
-      return content
+  /**
+   * Renders a Markdown string to an HTML string.
+   * @param markdownString The string to render.
+   * @returns The rendered HTML string.
+   */
+  const renderMarkdown = (markdownString: string | undefined | null): string => {
+    if (!markdownString) {
+      return '';
     }
-  }
-
-  const renderMarkdownSafe = computed(() => renderMarkdown)
+    // The 'marked' function can return a Promise, so we handle it asynchronously.
+    // However, with the current setup, it behaves synchronously. We cast to be safe.
+    return marked.parse(markdownString) as string;
+  };
 
   return {
     renderMarkdown,
-    renderMarkdownSafe
-  }
+  };
 }
