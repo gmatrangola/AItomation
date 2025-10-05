@@ -1,41 +1,83 @@
 <template>
     <div class="dashboard">
-        <AIChat v-model="prompt" @install-automation="handleInstallAutomation" />
+        <!-- Compact Action Bar -->
+        <div class="action-bar">
+            <v-btn variant="text" size="small" color="error" @click="handleClearChat" v-if="hasMessages">
+                <v-icon start size="small">mdi-delete</v-icon>
+                Clear
+            </v-btn>
+            <v-spacer />
+            <v-btn variant="tonal" size="small" color="primary" @click="drawer = true">
+                <v-badge :content="automations.length" :model-value="automations.length > 0" color="success" inline>
+                    <v-icon start size="small">mdi-cog-outline</v-icon>
+                </v-badge>
+                Automations
+            </v-btn>
+        </div>
 
-        <v-divider class="my-6"></v-divider>
+        <!-- Main Chat Area -->
+        <div class="chat-wrapper">
+            <AIChat ref="chatRef" v-model="prompt" @install-automation="handleInstallAutomation"
+                @has-messages="hasMessages = $event" />
+        </div>
 
-        <!-- Automation List -->
-        <v-card class="automation-list-card" elevation="2">
-            <v-card-title class="automation-list-title">
-                <v-icon class="mr-2">mdi-cog-outline</v-icon>
-                Existing Automations
-            </v-card-title>
-            <v-card-text>
-                <v-data-table :headers="headers" :items="automations" :loading="loading" item-key="id"
-                    class="automation-table" :items-per-page="10">
-                    <template v-slot:item.state="{ item }">
-                        <v-chip :color="item.state === 'on' ? 'success' : 'default'" size="small">
-                            {{ item.state }}
-                        </v-chip>
+        <!-- Automation List Drawer -->
+        <v-navigation-drawer v-model="drawer" location="right" temporary width="400" class="automation-drawer">
+            <template v-slot:prepend>
+                <div class="drawer-header">
+                    <div class="drawer-title">
+                        <v-icon size="small" class="mr-2">mdi-cog-outline</v-icon>
+                        <span>Automations</span>
+                    </div>
+                    <v-btn icon variant="text" size="x-small" @click="drawer = false">
+                        <v-icon size="small">mdi-close</v-icon>
+                    </v-btn>
+                </div>
+                <v-divider />
+            </template>
+
+            <v-list density="compact">
+                <v-list-item v-if="loading">
+                    <v-progress-circular indeterminate color="primary" size="20" />
+                    <span class="ml-3 text-caption">Loading...</span>
+                </v-list-item>
+
+                <v-list-item v-else-if="automations.length === 0">
+                    <v-list-item-title class="text-secondary text-caption">
+                        No automations found
+                    </v-list-item-title>
+                </v-list-item>
+
+                <v-list-item v-for="automation in automations" :key="automation.id" class="automation-item">
+                    <template v-slot:prepend>
+                        <v-avatar :color="automation.state === 'on' ? 'success' : 'grey'" size="28">
+                            <v-icon size="x-small" color="white">
+                                {{ automation.state === 'on' ? 'mdi-check' : 'mdi-power' }}
+                            </v-icon>
+                        </v-avatar>
                     </template>
-                    <template v-slot:item.prompt="{ item }">
-                        <span class="text-truncate" style="max-width: 200px;">
-                            {{ item.prompt || 'N/A' }}
-                        </span>
-                    </template>
-                    <template v-slot:item.actions="{ item }">
-                        <v-btn size="small" :disabled="!item.is_editable" @click="handleEditAutomation(item)"
-                            color="primary" variant="outlined">
-                            <v-icon start>mdi-pencil</v-icon>
-                            Edit with AI
+
+                    <v-list-item-title class="text-body-2">{{ automation.alias }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-caption">
+                        {{ automation.entity_id }}
+                    </v-list-item-subtitle>
+                    <v-list-item-subtitle v-if="automation.prompt" class="text-caption mt-1">
+                        <v-icon size="x-small">mdi-chat</v-icon>
+                        {{ truncate(automation.prompt, 40) }}
+                    </v-list-item-subtitle>
+
+                    <template v-slot:append>
+                        <v-btn v-if="automation.is_editable" size="x-small" @click="handleEditAutomation(automation)"
+                            color="primary" variant="text" icon>
+                            <v-icon size="small">mdi-pencil</v-icon>
                         </v-btn>
                     </template>
-                </v-data-table>
-            </v-card-text>
-        </v-card>
+                </v-list-item>
+            </v-list>
+        </v-navigation-drawer>
 
         <!-- Success Snackbar -->
-        <v-snackbar v-model="showSuccessSnackbar" color="success" :timeout="3000">
+        <v-snackbar v-model="showSuccessSnackbar" color="success" :timeout="3000" location="top">
             <v-icon start>mdi-check-circle</v-icon>
             Automation installed successfully!
         </v-snackbar>
@@ -56,20 +98,22 @@ interface Automation {
     is_editable: boolean;
 }
 
-// Refs for existing automation list
 const loading = ref(true);
 const automations = ref<Automation[]>([]);
-const headers = [
-    { title: 'Alias', value: 'alias', width: '25%' },
-    { title: 'Entity ID', value: 'entity_id', width: '20%' },
-    { title: 'State', value: 'state', width: '10%' },
-    { title: 'Prompt', value: 'prompt', width: '30%' },
-    { title: 'Actions', value: 'actions', sortable: false, width: '15%' },
-];
-
-// Refs for chat interface
+const drawer = ref(false);
 const prompt = ref('');
 const showSuccessSnackbar = ref(false);
+const hasMessages = ref(false);
+const chatRef = ref<InstanceType<typeof AIChat> | null>(null);
+
+const handleClearChat = async () => {
+    if (confirm('Clear chat history?')) {
+        if (chatRef.value) {
+            await chatRef.value.clearChat();
+            prompt.value = '';
+        }
+    }
+};
 
 const handleInstallAutomation = async (yaml: string) => {
     try {
@@ -87,10 +131,8 @@ const handleInstallAutomation = async (yaml: string) => {
             throw new Error(errorData.error || errorData.detail || 'Failed to install automation');
         }
 
-        // Refresh automations list
         await fetchAutomations();
         showSuccessSnackbar.value = true;
-
         console.log('Automation installed successfully');
     } catch (error) {
         console.error('Failed to install automation:', error);
@@ -99,13 +141,12 @@ const handleInstallAutomation = async (yaml: string) => {
 };
 
 const handleEditAutomation = (automation: Automation) => {
-    // Pre-fill the prompt with existing automation info for editing
+    drawer.value = false;
     if (automation.prompt) {
-        prompt.value = `Edit this automation: "${automation.alias}" - ${automation.prompt}`;
+        prompt.value = `Edit: "${automation.alias}" - ${automation.prompt}`;
     } else {
-        prompt.value = `Edit automation: "${automation.alias}" (Entity: ${automation.entity_id})`;
+        prompt.value = `Edit: "${automation.alias}" (${automation.entity_id})`;
     }
-    console.log('Edit automation:', automation);
 };
 
 const fetchAutomations = async () => {
@@ -121,33 +162,64 @@ const fetchAutomations = async () => {
     }
 };
 
+const truncate = (text: string, length: number): string => {
+    if (text.length <= length) return text;
+    return text.substring(0, length) + '...';
+};
+
 onMounted(fetchAutomations);
 </script>
 
 <style scoped>
 .dashboard {
-    max-width: 100%;
-}
-
-.automation-list-card {
-    background-color: var(--ha-card-background);
-    border: 1px solid var(--ha-border);
-}
-
-.automation-list-title {
-    color: var(--ha-primary-text);
-    font-size: 1.2rem;
-    font-weight: 500;
-}
-
-.automation-table {
-    background-color: transparent;
-}
-
-.text-truncate {
-    white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-height: 100vh;
     overflow: hidden;
-    text-overflow: ellipsis;
-    display: inline-block;
+}
+
+.action-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--ha-card-background);
+    border-bottom: 1px solid var(--ha-border);
+    flex-shrink: 0;
+    z-index: 10;
+    height: 48px;
+}
+
+.chat-wrapper {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.automation-drawer {
+    border-left: 1px solid var(--ha-border);
+}
+
+.drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+}
+
+.drawer-title {
+    display: flex;
+    align-items: center;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ha-primary-text);
+}
+
+.automation-item {
+    border-bottom: 1px solid var(--ha-border);
+    padding: 0.75rem 1rem;
 }
 </style>

@@ -1,9 +1,7 @@
 <template>
     <v-app>
-        <v-main>
-            <v-container fluid class="pa-4">
-                <Dashboard />
-            </v-container>
+        <v-main class="main-container">
+            <Dashboard />
         </v-main>
     </v-app>
 </template>
@@ -29,15 +27,29 @@ import Dashboard from '@/views/Dashboard.vue';
 html,
 body,
 #app {
-    height: 100%;
+    height: 100vh;
     margin: 0;
     padding: 0;
+    overflow: hidden;
     background-color: var(--ha-background);
     color: var(--ha-primary-text);
 }
 
 .v-application {
     background-color: var(--ha-background) !important;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.main-container {
+    height: 100vh;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.main-container .v-main__wrap {
+    height: 100vh;
+    overflow: hidden;
 }
 
 /* Vuetify component overrides for HA theme */

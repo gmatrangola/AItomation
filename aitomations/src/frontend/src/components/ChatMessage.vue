@@ -1,11 +1,11 @@
 <template>
     <div :class="['chat-message', `chat-message--${message.role}`]">
         <div class="chat-message__header">
-            <v-avatar :color="message.role === 'user' ? 'primary' : 'success'" size="32">
-                <v-icon>{{ message.role === 'user' ? 'mdi-account' : 'mdi-robot' }}</v-icon>
+            <v-avatar :color="message.role === 'user' ? 'primary' : 'success'" size="24">
+                <v-icon size="x-small">{{ message.role === 'user' ? 'mdi-account' : 'mdi-robot' }}</v-icon>
             </v-avatar>
             <span class="chat-message__role">
-                {{ message.role === 'user' ? 'You' : 'AI Assistant' }}
+                {{ message.role === 'user' ? 'You' : 'Assistant' }}
             </span>
             <span class="chat-message__time">
                 {{ formatTime(message.timestamp) }}
@@ -22,10 +22,10 @@
             <div v-else class="markdown-content" v-html="renderMarkdown(message.content)"></div>
 
             <!-- Install button for messages with YAML -->
-            <div v-if="message.yaml && showInstallButton" class="chat-message__actions mt-3">
-                <v-btn color="success" variant="elevated" @click="$emit('install', message.yaml)">
-                    <v-icon start>mdi-download</v-icon>
-                    Install Automation
+            <div v-if="message.yaml && showInstallButton" class="chat-message__actions mt-2">
+                <v-btn color="success" variant="elevated" size="small" @click="$emit('install', message.yaml)">
+                    <v-icon start size="small">mdi-download</v-icon>
+                    Install
                 </v-btn>
             </div>
         </div>
@@ -62,15 +62,16 @@ const formatTime = (date: Date): string => {
 
 <style scoped>
 .chat-message {
-    margin-bottom: 1.5rem;
-    animation: slideIn 0.3s ease-out;
+    margin-bottom: 0.875rem;
+    animation: slideIn 0.2s ease-out;
 }
 
 @keyframes slideIn {
     from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(6px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -80,25 +81,26 @@ const formatTime = (date: Date): string => {
 .chat-message__header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
 }
 
 .chat-message__role {
     font-weight: 600;
+    font-size: 0.8rem;
     color: var(--ha-primary-text);
 }
 
 .chat-message__time {
-    font-size: 0.875rem;
+    font-size: 0.7rem;
     color: var(--ha-secondary-text);
     margin-left: auto;
 }
 
 .chat-message__content {
-    margin-left: 2.5rem;
-    padding: 1rem;
-    border-radius: 8px;
+    margin-left: 1.75rem;
+    padding: 0.65rem 0.875rem;
+    border-radius: 10px;
 }
 
 .chat-message--user .chat-message__content {
@@ -109,13 +111,14 @@ const formatTime = (date: Date): string => {
 .chat-message--assistant .chat-message__content {
     background-color: var(--ha-card-background);
     border: 1px solid var(--ha-primary-color);
-    border-left-width: 4px;
+    border-left-width: 3px;
 }
 
 .chat-message__text {
     color: var(--ha-primary-text);
     white-space: pre-wrap;
     word-wrap: break-word;
+    font-size: 0.875rem;
 }
 
 .chat-message__actions {
