@@ -1,13 +1,16 @@
-import { ref, computed } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { ChatService } from '@/services/chatService';
+import { ChatStorage } from '@/services/chatStorage';
 import type { ChatMessage } from '@/types/chat';
 import { v4 as uuidv4 } from 'uuid';
 
 export function useChat() {
     console.log('[useChat] Composable initialized');
     const chatService = new ChatService();
+    
     const messages = ref<ChatMessage[]>([]);
     const isGenerating = ref(false);
+    const isLoadingHistory = ref(true);
 
     const latestYaml = computed(() => {
         // Find the most recent assistant message with YAML
@@ -21,6 +24,37 @@ export function useChat() {
         console.log('[useChat] No YAML found in messages');
         return null;
     });
+
+    // Load persisted messages on initialization
+    onMounted(async () => {
+        console.log('[useChat] Loading chat history...');
+        try {
+            const storedMessages = await ChatStorage.load();
+            if (storedMessages && storedMessages.length > 0) {
+                messages.value = storedMessages;
+                console.log('[useChat] Restored', storedMessages.length, 'messages from storage');
+            } else {
+                console.log('[useChat] No stored messages found');
+            }
+        } catch (error) {
+            console.error('[useChat] Failed to load chat history:', error);
+        } finally {
+            isLoadingHistory.value = false;
+        }
+    });
+
+    // Watch messages and save to storage whenever they change
+    // Use debouncing to avoid saving too frequently
+    let saveTimeout: number | null = null;
+    watch(messages, (newMessages) => {
+        if (saveTimeout) {
+            clearTimeout(saveTimeout);
+        }
+        
+        saveTimeout = window.setTimeout(() => {
+            ChatStorage.save(newMessages);
+        }, 1000); // Wait 1 second after last change before saving
+    }, { deep: true });
 
     const sendMessage = async (prompt: string) => {
         console.log('[useChat] sendMessage called');
@@ -86,15 +120,17 @@ export function useChat() {
         }
     };
 
-    const clearChat = () => {
+    const clearChat = async () => {
         console.log('[useChat] Clearing chat - current messages:', messages.value.length);
         messages.value = [];
+        await ChatStorage.clear();
         console.log('[useChat] Chat cleared');
     };
 
     return {
         messages,
         isGenerating,
+        isLoadingHistory,
         latestYaml,
         sendMessage,
         clearChat,

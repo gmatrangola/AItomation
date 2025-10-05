@@ -74,11 +74,12 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted } from 'vue';
 import { useChat } from '@/composables/useChat';
+import { ChatStorage } from '@/services/chatStorage';
 import ChatMessage from './ChatMessage.vue';
 
 console.log('[AIChat] Component script loaded');
 
-const { messages, isGenerating, latestYaml, sendMessage, clearChat } = useChat();
+const { messages, isGenerating, isLoadingHistory, latestYaml, sendMessage, clearChat } = useChat();
 
 console.log('[AIChat] useChat composable loaded');
 
@@ -97,6 +98,7 @@ const emit = defineEmits<{
 
 const internalPrompt = ref(props.modelValue);
 const messagesContainer = ref<HTMLElement>();
+const wasRestored = ref(false);
 
 const examplePrompts = [
     'Turn on lights at sunset',
@@ -104,9 +106,20 @@ const examplePrompts = [
     'Start the coffee maker on weekday mornings',
 ];
 
-onMounted(() => {
+onMounted(async () => {
     console.log('[AIChat] Component mounted');
-    console.log('[AIChat] Initial messages:', messages.value.length);
+
+    // Wait for chat history to load
+    watch(isLoadingHistory, async (loading) => {
+        if (!loading && messages.value.length > 0) {
+            console.log('[AIChat] Chat history loaded with', messages.value.length, 'messages');
+            wasRestored.value = true;
+            // Hide the indicator after 3 seconds
+            setTimeout(() => {
+                wasRestored.value = false;
+            }, 3000);
+        }
+    }, { immediate: true });
 });
 
 // Watch for external prompt changes
@@ -164,10 +177,10 @@ const selectExample = (example: string) => {
     handleSend();
 };
 
-const handleClearChat = () => {
+const handleClearChat = async () => {
     console.log('[AIChat] handleClearChat called');
-    if (confirm('Are you sure you want to clear the chat history?')) {
-        clearChat();
+    if (confirm('Are you sure you want to clear the chat history? This will delete it from Home Assistant storage.')) {
+        await clearChat();
         internalPrompt.value = '';
         console.log('[AIChat] Chat cleared');
     } else {

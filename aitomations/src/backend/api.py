@@ -1,5 +1,7 @@
 import logging
 import json
+import os
+import time
 from fastapi import Request, HTTPException
 
 logger = logging.getLogger(__name__)
@@ -68,3 +70,89 @@ async def generate_automation(request: Request):
             "full_response": f"Error: {str(e)}",
             "error": str(e)
         }
+
+
+@app.get("/api/chat/history")
+async def get_chat_history(request: Request):
+    """Get persisted chat history from Home Assistant storage."""
+    logger.info("=== get_chat_history endpoint called ===")
+    
+    try:
+        # Load from Home Assistant storage
+        storage_path = "/data/chat_history.json"
+        
+        if not os.path.exists(storage_path):
+            logger.info("No chat history found")
+            return {"messages": []}
+        
+        with open(storage_path, 'r') as f:
+            data = json.load(f)
+        
+        # Check if data is too old (7 days)
+        timestamp = data.get("timestamp", 0)
+        age_days = (time.time() - timestamp) / (60 * 60 * 24)
+        
+        if age_days > 7:
+            logger.info(f"Chat history is {age_days:.1f} days old, clearing")
+            os.remove(storage_path)
+            return {"messages": []}
+        
+        messages = data.get("messages", [])
+        logger.info(f"Loaded {len(messages)} messages from storage")
+        
+        return {"messages": messages}
+        
+    except Exception as e:
+        logger.error(f"Error loading chat history: {e}", exc_info=True)
+        return {"messages": [], "error": str(e)}
+
+
+@app.post("/api/chat/history")
+async def save_chat_history(request: Request):
+    """Save chat history to Home Assistant storage."""
+    logger.info("=== save_chat_history endpoint called ===")
+    
+    try:
+        data = await request.json()
+        messages = data.get("messages", [])
+        
+        logger.info(f"Saving {len(messages)} messages to storage")
+        
+        # Save to Home Assistant storage
+        storage_path = "/data/chat_history.json"
+        storage_data = {
+            "messages": messages,
+            "timestamp": time.time()
+        }
+        
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+        
+        with open(storage_path, 'w') as f:
+            json.dump(storage_data, f, indent=2)
+        
+        logger.info("Chat history saved successfully")
+        return {"success": True}
+        
+    except Exception as e:
+        logger.error(f"Error saving chat history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/chat/history")
+async def clear_chat_history(request: Request):
+    """Clear persisted chat history."""
+    logger.info("=== clear_chat_history endpoint called ===")
+    
+    try:
+        storage_path = "/data/chat_history.json"
+        
+        if os.path.exists(storage_path):
+            os.remove(storage_path)
+            logger.info("Chat history cleared")
+        
+        return {"success": True}
+        
+    except Exception as e:
+        logger.error(f"Error clearing chat history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
