@@ -1,7 +1,6 @@
 <template>
     <div class="dashboard">
-        <AIChat v-model="prompt" :response="aiResponse" :generating="generating" @generate-prompt="handleGeneratePrompt"
-            @install-automation="handleInstallAutomation" />
+        <AIChat v-model="prompt" @install-automation="handleInstallAutomation" />
 
         <v-divider class="my-6"></v-divider>
 
@@ -34,6 +33,12 @@
                 </v-data-table>
             </v-card-text>
         </v-card>
+
+        <!-- Success Snackbar -->
+        <v-snackbar v-model="showSuccessSnackbar" color="success" :timeout="3000">
+            <v-icon start>mdi-check-circle</v-icon>
+            Automation installed successfully!
+        </v-snackbar>
     </div>
 </template>
 
@@ -51,12 +56,6 @@ interface Automation {
     is_editable: boolean;
 }
 
-interface AiResponse {
-    full_response?: string;
-    error?: string;
-    rawResponse?: string;
-}
-
 // Refs for existing automation list
 const loading = ref(true);
 const automations = ref<Automation[]>([]);
@@ -70,46 +69,7 @@ const headers = [
 
 // Refs for chat interface
 const prompt = ref('');
-const aiResponse = ref<AiResponse | null>(null);
-const generating = ref(false);
-
-const handleGeneratePrompt = async (promptText: string) => {
-    generating.value = true;
-    aiResponse.value = null;
-
-    let response;
-    try {
-        response = await fetch('api/generate_automation', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: promptText }),
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            aiResponse.value = data;
-        } else {
-            throw new Error(data.error || 'An unknown error occurred');
-        }
-    } catch (error: any) {
-        console.error("Frontend Error:", error);
-
-        if (response) {
-            response.text().then(text => {
-                console.error("Raw Backend Response Text:", text);
-                aiResponse.value = {
-                    error: error.message,
-                    rawResponse: text
-                };
-            });
-        } else {
-            aiResponse.value = { error: error.message };
-        }
-    } finally {
-        generating.value = false;
-    }
-};
+const showSuccessSnackbar = ref(false);
 
 const handleInstallAutomation = async (yaml: string) => {
     try {
@@ -123,17 +83,18 @@ const handleInstallAutomation = async (yaml: string) => {
         });
 
         if (!response.ok) {
-            throw new Error('Failed to install automation');
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || errorData.detail || 'Failed to install automation');
         }
 
-        // Refresh automations list and clear the current response
+        // Refresh automations list
         await fetchAutomations();
-        aiResponse.value = null;
-        prompt.value = '';
+        showSuccessSnackbar.value = true;
 
         console.log('Automation installed successfully');
     } catch (error) {
         console.error('Failed to install automation:', error);
+        alert(`Failed to install automation: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 };
 
