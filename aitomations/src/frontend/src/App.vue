@@ -214,4 +214,68 @@ body,
     background-color: var(--ha-card-background) !important;
     font-weight: bold;
 }
+
+/* Syntax highlighting overrides to work with HA theme */
+.markdown-content .hljs {
+    background-color: var(--ha-card-background) !important;
+    color: var(--ha-primary-text) !important;
+    padding: 12px !important;
+    border-radius: 4px;
+    border: 1px solid var(--ha-border) !important;
+}
+
+/* YAML-specific syntax highlighting */
+.markdown-content .hljs-attr,
+.markdown-content .hljs-name {
+    color: var(--ha-primary-color) !important;
+    /* Keys like 'alias:', 'trigger:' */
+}
+
+.markdown-content .hljs-string,
+.markdown-content .hljs-literal {
+    color: var(--ha-success) !important;
+    /* String values */
+}
+
+.markdown-content .hljs-number {
+    color: var(--ha-warning) !important;
+    /* Numbers */
+}
+
+.markdown-content .hljs-comment {
+    color: var(--ha-secondary-text) !important;
+    /* Comments */
+    font-style: italic;
+}
+
+.markdown-content .hljs-keyword,
+.markdown-content .hljs-type {
+    color: #ff79c6 !important;
+    /* YAML keywords */
+}
+
+.markdown-content .hljs-built_in,
+.markdown-content .hljs-selector-tag {
+    color: #8be9fd !important;
+    /* Built-in functions/types */
+}
+
+.markdown-content .hljs-variable {
+    color: var(--ha-primary-text) !important;
+    /* Variables */
+}
+
+.markdown-content .hljs-title,
+.markdown-content .hljs-section {
+    color: var(--ha-primary-color) !important;
+    font-weight: bold;
+}
+
+.markdown-content .hljs-emphasis {
+    font-style: italic;
+}
+
+.markdown-content .hljs-strong {
+    font-weight: bold;
+}
 </style>
