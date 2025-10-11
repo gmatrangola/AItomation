@@ -2,11 +2,19 @@ import type { ChatMessage } from '@/types/chat';
 import { v4 as uuidv4 } from 'uuid';
 
 export class ChatService {
-    async sendMessage(
+    /**
+     * Send message with streaming response
+     * @param prompt User's message
+     * @param conversationHistory Previous messages
+     * @param onChunk Callback for each chunk of text
+     * @returns Complete message with extracted YAML
+     */
+    async sendMessageStream(
         prompt: string,
-        conversationHistory: ChatMessage[] = []
+        conversationHistory: ChatMessage[] = [],
+        onChunk: (text: string) => void
     ): Promise<{ message: ChatMessage; error?: string }> {
-        console.log('[ChatService] sendMessage called');
+        console.log('[ChatService] sendMessageStream called');
         console.log('[ChatService] Prompt:', prompt);
         console.log('[ChatService] History length:', conversationHistory.length);
         
@@ -19,21 +27,15 @@ export class ChatService {
                 }))
             };
             
-            console.log('[ChatService] Request body:', JSON.stringify(requestBody, null, 2));
+            console.log('[ChatService] Fetching stream from api/generate_automation/stream');
             
-            // Use relative path for Home Assistant ingress compatibility
-            const apiUrl = 'api/generate_automation';
-            console.log('[ChatService] Fetching', apiUrl);
-            
-            const response = await fetch(apiUrl, {
+            const response = await fetch('api/generate_automation/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),
             });
 
-            console.log('[ChatService] Response status:', response.status);
-            console.log('[ChatService] Response ok:', response.ok);
-            console.log('[ChatService] Response URL:', response.url);
+            console.log('[ChatService] Stream response status:', response.status);
 
             if (!response.ok) {
                 let errorData;
@@ -46,15 +48,56 @@ export class ChatService {
                 throw new Error(errorData.error || errorData.detail || `HTTP ${response.status}`);
             }
 
-            const data = await response.json();
-            console.log('[ChatService] Response data:', data);
+            // Read the stream
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            let fullResponse = '';
+            
+            if (!reader) {
+                throw new Error('No response body reader available');
+            }
+
+            while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                    console.log('[ChatService] Stream complete');
+                    break;
+                }
+
+                // Decode the chunk
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            
+                            if (data.type === 'content') {
+                                fullResponse += data.text;
+                                onChunk(data.text);
+                            } else if (data.type === 'done') {
+                                fullResponse = data.full_response;
+                                console.log('[ChatService] Received done signal');
+                            } else if (data.type === 'error') {
+                                throw new Error(data.error);
+                            }
+                        } catch (e) {
+                            if (e instanceof Error && e.message !== 'Unexpected end of JSON input') {
+                                console.error('[ChatService] Error parsing SSE data:', e);
+                            }
+                        }
+                    }
+                }
+            }
 
             const message: ChatMessage = {
                 id: uuidv4(),
                 role: 'assistant',
-                content: data.full_response || data.error || 'No response received',
+                content: fullResponse || 'No response received',
                 timestamp: new Date(),
-                yaml: this.extractYamlFromMarkdown(data.full_response || '')
+                yaml: this.extractYamlFromMarkdown(fullResponse || '')
             };
 
             console.log('[ChatService] Created message:', message);

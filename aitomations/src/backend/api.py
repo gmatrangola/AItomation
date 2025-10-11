@@ -3,6 +3,8 @@ import json
 import os
 import time
 from fastapi import Request, HTTPException
+from fastapi.responses import StreamingResponse
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -155,4 +157,77 @@ async def clear_chat_history(request: Request):
         
     except Exception as e:
         logger.error(f"Error clearing chat history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Add a new streaming endpoint
+@app.post("/api/generate_automation/stream")
+async def generate_automation_stream(request: Request):
+    """Generate automation with streaming response."""
+    logger.info("=== generate_automation_stream endpoint called ===")
+    
+    try:
+        data = await request.json()
+        prompt = data.get("prompt", "")
+        conversation_history = data.get("conversation_history", [])
+        
+        logger.info(f"Prompt: {prompt}")
+        logger.info(f"Conversation history length: {len(conversation_history)}")
+        
+        if not prompt:
+            raise HTTPException(status_code=400, detail="No prompt provided")
+        
+        async def generate():
+            try:
+                # Build conversation for Claude
+                messages = []
+                for msg in conversation_history:
+                    messages.append({
+                        "role": msg["role"],
+                        "content": msg["content"]
+                    })
+                messages.append({
+                    "role": "user",
+                    "content": prompt
+                })
+                
+                logger.info(f"Sending {len(messages)} messages to Claude")
+                
+                # Stream from Claude
+                full_response = ""
+                
+                async with anthropic_client.messages.stream(
+                    model=config.model,
+                    max_tokens=config.max_tokens,
+                    temperature=config.temperature,
+                    system=config.system_prompt,
+                    messages=messages
+                ) as stream:
+                    async for text in stream.text_stream:
+                        if text:
+                            full_response += text
+                            # Send each chunk as SSE
+                            yield f"data: {json.dumps({'type': 'content', 'text': text})}\n\n"
+                
+                # Send final message with complete response
+                logger.info(f"Stream complete. Total length: {len(full_response)}")
+                yield f"data: {json.dumps({'type': 'done', 'full_response': full_response})}\n\n"
+                
+            except Exception as e:
+                logger.error(f"Error in stream: {e}", exc_info=True)
+                error_msg = str(e)
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+        
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in generate_automation_stream: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

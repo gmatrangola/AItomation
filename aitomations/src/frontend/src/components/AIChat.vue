@@ -2,7 +2,7 @@
     <div class="ai-chat-container">
         <!-- Chat Messages -->
         <div ref="messagesContainer" class="messages-container">
-            <template v-if="messages.length === 0">
+            <template v-if="messages.length === 0 && !streamingMessage">
                 <div class="empty-state">
                     <v-icon size="48" color="primary">mdi-chat-outline</v-icon>
                     <h3 class="mt-3">Start a Conversation</h3>
@@ -22,8 +22,12 @@
                 <ChatMessage v-for="message in messages" :key="message.id" :message="message"
                     :show-install-button="message.yaml === latestYaml" @install="handleInstallAutomation" />
 
-                <!-- Loading indicator -->
-                <div v-if="isGenerating" class="chat-message chat-message--assistant">
+                <!-- Streaming message (real-time) -->
+                <ChatMessage v-if="streamingMessage" :key="streamingMessage.id" :message="streamingMessage"
+                    :show-install-button="false" class="streaming-message" />
+
+                <!-- Loading indicator (only show before streaming starts) -->
+                <div v-if="isGenerating && !streamingMessage" class="chat-message chat-message--assistant">
                     <div class="chat-message__header">
                         <v-avatar color="success" size="28">
                             <v-icon size="small">mdi-robot</v-icon>
@@ -64,7 +68,7 @@ import { ref, watch, nextTick } from 'vue';
 import { useChat } from '@/composables/useChat';
 import ChatMessage from './ChatMessage.vue';
 
-const { messages, isGenerating, latestYaml, sendMessage, clearChat } = useChat();
+const { messages, isGenerating, latestYaml, streamingMessage, sendMessage, clearChat } = useChat();
 
 interface Props {
     modelValue?: string;
@@ -107,8 +111,8 @@ watch(internalPrompt, (newValue) => {
     emit('update:modelValue', newValue);
 });
 
-// Scroll to bottom when new messages arrive
-watch(messages, async () => {
+// Scroll to bottom when messages or streaming message changes
+watch([messages, streamingMessage], async () => {
     await nextTick();
     if (messagesContainer.value) {
         messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
@@ -176,6 +180,30 @@ defineExpose({
 
 .messages-container::-webkit-scrollbar-thumb:hover {
     background: var(--ha-secondary-text);
+}
+
+.streaming-message {
+    opacity: 1;
+}
+
+.streaming-message::after {
+    content: '▋';
+    animation: blink 1s step-end infinite;
+    color: var(--ha-primary-color);
+    margin-left: 2px;
+}
+
+@keyframes blink {
+
+    0%,
+    50% {
+        opacity: 1;
+    }
+
+    51%,
+    100% {
+        opacity: 0;
+    }
 }
 
 .empty-state {

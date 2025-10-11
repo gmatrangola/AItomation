@@ -11,6 +11,7 @@ export function useChat() {
     const messages = ref<ChatMessage[]>([]);
     const isGenerating = ref(false);
     const isLoadingHistory = ref(true);
+    const streamingMessage = ref<ChatMessage | null>(null);
 
     const latestYaml = computed(() => {
         // Find the most recent assistant message with YAML
@@ -53,7 +54,7 @@ export function useChat() {
         
         saveTimeout = window.setTimeout(() => {
             ChatStorage.save(newMessages);
-        }, 1000); // Wait 1 second after last change before saving
+        }, 1000);
     }, { deep: true });
 
     const sendMessage = async (prompt: string) => {
@@ -76,26 +77,43 @@ export function useChat() {
         };
         console.log('[useChat] Adding user message:', userMessage);
         messages.value.push(userMessage);
-        console.log('[useChat] Messages after user add:', messages.value.length);
+
+        // Create streaming message placeholder
+        streamingMessage.value = {
+            id: uuidv4(),
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+        };
 
         isGenerating.value = true;
         console.log('[useChat] Set isGenerating to true');
 
         try {
-            // Pass all messages except the one we just added (it's already in the prompt)
+            // Pass all messages except the one we just added
             const historyToSend = messages.value.slice(0, -1);
             console.log('[useChat] History to send length:', historyToSend.length);
             
-            console.log('[useChat] Calling chatService.sendMessage...');
-            const { message, error } = await chatService.sendMessage(
+            console.log('[useChat] Calling chatService.sendMessageStream...');
+            
+            // Handle streaming chunks
+            const { message, error } = await chatService.sendMessageStream(
                 prompt,
-                historyToSend
+                historyToSend,
+                (chunk: string) => {
+                    // Update streaming message with new chunk
+                    if (streamingMessage.value) {
+                        streamingMessage.value.content += chunk;
+                    }
+                }
             );
             
-            console.log('[useChat] Received response from chatService');
-            console.log('[useChat] Response message:', message);
+            console.log('[useChat] Stream completed');
+            console.log('[useChat] Final message:', message);
             console.log('[useChat] Response error:', error);
             
+            // Replace streaming message with final message
+            streamingMessage.value = null;
             messages.value.push(message);
             console.log('[useChat] Messages after assistant add:', messages.value.length);
 
@@ -104,7 +122,10 @@ export function useChat() {
             }
         } catch (error) {
             console.error('[useChat] Exception in sendMessage:', error);
-            // Add error message to chat
+            
+            // Clear streaming message and add error message
+            streamingMessage.value = null;
+            
             const errorMessage: ChatMessage = {
                 id: uuidv4(),
                 role: 'assistant',
@@ -123,6 +144,7 @@ export function useChat() {
     const clearChat = async () => {
         console.log('[useChat] Clearing chat - current messages:', messages.value.length);
         messages.value = [];
+        streamingMessage.value = null;
         await ChatStorage.clear();
         console.log('[useChat] Chat cleared');
     };
@@ -132,6 +154,7 @@ export function useChat() {
         isGenerating,
         isLoadingHistory,
         latestYaml,
+        streamingMessage,
         sendMessage,
         clearChat,
     };
