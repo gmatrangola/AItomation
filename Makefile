@@ -12,6 +12,8 @@ BACKEND_DIR := aitomations/src/backend
 BUILD_DIR := build
 ADDON_DIR := aitomations
 SCRIPTS_DIR := scripts
+ADDON_SLUG := aitomations-creator
+ADDON_FULL_SLUG := local_$(ADDON_SLUG)
 
 # Deployment targets (loaded from .env or defaults)
 TARGET ?= test
@@ -28,14 +30,16 @@ install: ## Install all dependencies
 	@echo "Installing frontend dependencies..."
 	cd $(FRONTEND_DIR) && pnpm install
 	@echo "Installing backend dependencies..."
-	cd $(BACKEND_DIR) && pip3 install -e .[dev]
+	pip3 install --user -r $(ADDON_DIR)/requirements.txt
+	pip3 install --user pytest pytest-cov ruff black
 	@echo "✓ All dependencies installed"
 
 install-frontend: ## Install frontend dependencies only
 	cd $(FRONTEND_DIR) && pnpm install
 
 install-backend: ## Install backend dependencies only
-	cd $(BACKEND_DIR) && pip3 install -e .[dev]
+	pip3 install --user -r $(ADDON_DIR)/requirements.txt
+	pip3 install --user pytest pytest-cov ruff black
 
 validate-backend: ## Validate Python syntax and imports
 	@python3 $(SCRIPTS_DIR)/validate_backend.py
@@ -172,30 +176,32 @@ ssh: ## SSH into target instance
 	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST)
 
 logs: ## Tail add-on logs on target instance
-	@echo "Tailing logs for aitomations add-on..."
+	@echo "Tailing logs for $(ADDON_FULL_SLUG) add-on..."
 	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
-	    "docker logs -f addon_aitomations 2>&1 || \
-	     ha addons logs aitomations -f"
+	    "docker logs -f addon_$(ADDON_FULL_SLUG) 2>&1 || \
+	     ha addons logs $(ADDON_FULL_SLUG) -f"
 
 restart: ## Restart add-on on target instance
-	@echo "Restarting aitomations add-on..."
+	@echo "Restarting $(ADDON_FULL_SLUG) add-on..."
 	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
-	    "docker restart addon_aitomations 2>/dev/null || \
-	     ha addons restart aitomations"
+	    "docker restart addon_$(ADDON_FULL_SLUG) 2>/dev/null || \
+	     ha addons restart $(ADDON_FULL_SLUG)"
 	@echo "✓ Add-on restart command sent"
 	@echo "Wait a few seconds, then check: make status TARGET=$(TARGET)"
 
 status: ## Check add-on status on target instance
 	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
-	    "docker ps --filter name=addon_aitomations --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || \
-	     ha addons info aitomations"
+	    "docker ps --filter name=addon_$(ADDON_FULL_SLUG) --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || \
+	     ha addons info $(ADDON_FULL_SLUG)"
 
 info: ## Show deployment target info
-	@echo "Target: $(TARGET)"
-	@echo "Host:   $(HA_HOST)"
-	@echo "User:   $(HA_USER)"
-	@echo "Port:   $(HA_PORT)"
-	@echo "Path:   $(HA_PATH)"
+	@echo "Target:     $(TARGET)"
+	@echo "Host:       $(HA_HOST)"
+	@echo "User:       $(HA_USER)"
+	@echo "Port:       $(HA_PORT)"
+	@echo "Path:       $(HA_PATH)"
+	@echo "Slug:       $(ADDON_SLUG)"
+	@echo "Full Slug:  $(ADDON_FULL_SLUG)"
 
 version: ## Show version info
 	@echo "Frontend:"
