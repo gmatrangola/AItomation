@@ -1,4 +1,4 @@
-.PHONY: help install build clean deploy deploy-prod deploy-test test lint format validate
+.PHONY: help install build clean deploy deploy-prod deploy-test test lint format validate validate-force
 
 # Default target
 .DEFAULT_GOAL := help
@@ -14,17 +14,26 @@ ADDON_DIR := aitomations
 SCRIPTS_DIR := scripts
 ADDON_SLUG := aitomations-creator
 ADDON_FULL_SLUG := local_$(ADDON_SLUG)
+CACHE_DIR := .make-cache
 
 # Deployment targets (loaded from .env or defaults)
 TARGET ?= test
 include .deploy.env
 -include .deploy.$(TARGET).env
 
+# Find all source files for dependency tracking
+FRONTEND_SRC := $(shell find $(FRONTEND_DIR)/src -type f \( -name "*.vue" -o -name "*.ts" -o -name "*.js" \) 2>/dev/null)
+BACKEND_SRC := $(shell find $(BACKEND_DIR) -type f -name "*.py" 2>/dev/null)
+
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+# Create cache directory
+$(CACHE_DIR):
+	@mkdir -p $(CACHE_DIR)
 
 install: ## Install all dependencies
 	@echo "Installing frontend dependencies..."
@@ -41,15 +50,34 @@ install-backend: ## Install backend dependencies only
 	pip3 install --user -r $(ADDON_DIR)/requirements.txt
 	pip3 install --user pytest pytest-cov ruff black
 
-validate-backend: ## Validate Python syntax and imports
+# Backend validation with caching
+$(CACHE_DIR)/backend-validated: $(BACKEND_SRC) | $(CACHE_DIR)
+	@echo "Backend files changed, validating..."
 	@python3 $(SCRIPTS_DIR)/validate_backend.py
+	@touch $(CACHE_DIR)/backend-validated
 
-validate-frontend: ## Validate TypeScript/Vue syntax
-	@echo "Validating frontend..."
+validate-backend: $(CACHE_DIR)/backend-validated ## Validate Python syntax and imports (cached)
+
+validate-backend-force: ## Force backend validation (ignore cache)
+	@rm -f $(CACHE_DIR)/backend-validated
+	@$(MAKE) validate-backend
+
+# Frontend validation with caching
+$(CACHE_DIR)/frontend-validated: $(FRONTEND_SRC) $(FRONTEND_DIR)/tsconfig.json | $(CACHE_DIR)
+	@echo "Frontend files changed, validating..."
 	@cd $(FRONTEND_DIR) && pnpm run type-check 2>/dev/null || \
 	 (echo "TypeScript validation..." && npx vue-tsc --noEmit || true)
+	@touch $(CACHE_DIR)/frontend-validated
 
-validate: validate-backend validate-frontend ## Validate all code
+validate-frontend: $(CACHE_DIR)/frontend-validated ## Validate TypeScript/Vue syntax (cached)
+
+validate-frontend-force: ## Force frontend validation (ignore cache)
+	@rm -f $(CACHE_DIR)/frontend-validated
+	@$(MAKE) validate-frontend
+
+validate: validate-backend validate-frontend ## Validate all code (cached)
+
+validate-force: validate-backend-force validate-frontend-force ## Force validation of all code (ignore cache)
 
 build: clean validate ## Build frontend and package add-on
 	@echo "Building frontend..."
@@ -88,6 +116,11 @@ clean: ## Clean build artifacts
 	@find . -type d -name '.pytest_cache' -exec rm -rf {} + 2>/dev/null || true
 	@find . -type d -name '.ruff_cache' -exec rm -rf {} + 2>/dev/null || true
 	@echo "✓ Cleaned"
+
+clean-all: clean ## Clean build artifacts and validation cache
+	@echo "Cleaning validation cache..."
+	@rm -rf $(CACHE_DIR)
+	@echo "✓ All cleaned"
 
 test: ## Run all tests
 	@echo "Running frontend tests..."
@@ -170,7 +203,19 @@ deploy-prod: ## Deploy to production instance
 
 deploy-quick: ## Quick deploy without rebuild (use existing build)
 	@echo "Deploying without rebuild..."
-	@$(MAKE) -s deploy BUILD_DIR=$(BUILD_DIR)
+	@if [ ! -d "$(BUILD_DIR)" ]; then \
+	    echo "Error: Build directory doesn't exist. Run 'make build' first."; \
+	    exit 1; \
+	fi
+	@echo "Testing SSH connection..."
+	@ssh -p $(HA_PORT) -o ConnectTimeout=5 $(HA_USER)@$(HA_HOST) "echo 'Connected'" || \
+	    (echo "SSH connection failed"; exit 1)
+	@echo "Syncing files..."
+	@rsync -avz --delete --progress \
+	    -e "ssh -p $(HA_PORT)" \
+	    $(BUILD_DIR)/ \
+	    $(HA_USER)@$(HA_HOST):$(HA_PATH)/
+	@echo "✓ Deployed to $(TARGET)"
 
 ssh: ## SSH into target instance
 	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST)
