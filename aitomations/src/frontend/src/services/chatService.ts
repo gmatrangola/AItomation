@@ -45,7 +45,12 @@ export class ChatService {
                     errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
                 }
                 console.error('[ChatService] Error response:', errorData);
-                throw new Error(errorData.error || errorData.detail || `HTTP ${response.status}`);
+                
+                // Return the raw error - let ErrorMessage component format it
+                const errorMessage = errorData.error || errorData.detail || 
+                    `Server returned error: ${response.status}`;
+                
+                throw new Error(errorMessage);
             }
 
             // Read the stream
@@ -106,15 +111,18 @@ export class ChatService {
             return { message };
         } catch (error: any) {
             console.error('[ChatService] Exception caught:', error);
-            console.error('[ChatService] Error stack:', error.stack);
+            
+            // Return raw error message - ErrorMessage component will format it
+            const errorMessage = error.message || 'An unknown error occurred';
+            
             return {
                 message: {
                     id: uuidv4(),
                     role: 'assistant',
-                    content: `Error: ${error.message}`,
+                    content: errorMessage,
                     timestamp: new Date(),
                 },
-                error: error.message
+                error: errorMessage
             };
         }
     }

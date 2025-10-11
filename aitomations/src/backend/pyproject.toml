@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aitomations-backend"
+version = "1.0.0"
+description = "Home Assistant AI Automation Creator Backend"
+requires-python = ">=3.9"
+dependencies = [
+    "flask>=2.3.0",
+    "flask-cors>=2.0.0",
+    "requests>=2.31.0",
+    "pyyaml>=6.0",
+    "google-generativeai>=0.3.0",
+    "zeroconf>=0.132.0",
+    "gunicorn>=21.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4.0", "pytest-cov>=4.1.0", "ruff>=0.1.0", "black>=23.0.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

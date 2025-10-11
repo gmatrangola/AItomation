@@ -49,7 +49,7 @@ interface AutomationResponse {
     yaml: string
 }
 
-defineProps<{
+const props = defineProps<{
     automation: AutomationResponse
     installing: boolean
     modifying: boolean

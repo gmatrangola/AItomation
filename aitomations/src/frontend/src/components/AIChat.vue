@@ -42,6 +42,9 @@
             </template>
         </div>
 
+        <!-- Error Alert (above input) -->
+        <ErrorMessage v-if="currentError" :error="currentError" @close="clearError" />
+
         <!-- Compact Input Area -->
         <div class="chat-input-wrapper">
             <v-divider />
@@ -67,8 +70,9 @@
 import { ref, watch, nextTick } from 'vue';
 import { useChat } from '@/composables/useChat';
 import ChatMessage from './ChatMessage.vue';
+import ErrorMessage from './ErrorMessage.vue';
 
-const { messages, isGenerating, latestYaml, streamingMessage, sendMessage, clearChat } = useChat();
+const { messages, isGenerating, latestYaml, streamingMessage, currentError, sendMessage, clearChat, clearError } = useChat();
 
 interface Props {
     modelValue?: string;
@@ -125,6 +129,11 @@ const handleSend = async () => {
     const prompt = internalPrompt.value.trim();
     internalPrompt.value = '';
     await sendMessage(prompt);
+
+    // If there was an error, restore the prompt so user can try again
+    if (currentError.value) {
+        internalPrompt.value = prompt;
+    }
 };
 
 const handleNewLine = () => {

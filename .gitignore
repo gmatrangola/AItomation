@@ -1,5 +1,4 @@
 .pnpm-store
-node_modules
 .DS_Store
 .vscode
 .idea
@@ -13,9 +12,25 @@ node_modules
 *.war
 *.ear
 *.iml
-*.pyc
-__pycache__/
 .env.local
 package-lock.json
 key.local
+
+# Build artifacts
+build/
 dist/
+
+# Deployment configs (can contain sensitive info)
+.deploy.*.env
+.deploy-targets.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.vite/

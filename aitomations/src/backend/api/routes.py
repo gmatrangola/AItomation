@@ -266,21 +266,32 @@ mode: single
             print(f"[INFO] LLM response received, length: {len(full_response)}")
             
             # Stream the response in chunks
-            chunk_size = 50  # characters per chunk
+            chunk_size = 50
             for i in range(0, len(full_response), chunk_size):
                 chunk = full_response[i:i + chunk_size]
                 yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
             
-            # Send final done message
             yield f"data: {json.dumps({'type': 'done', 'full_response': full_response})}\n\n"
-            
             print("[INFO] Streaming complete")
             
-        except Exception as e:
+        except (ConnectionError, TimeoutError, RuntimeError) as e:
+            # These are our custom errors with formatted messages
             print(f"[ERROR] Error in generate_automation_stream: {e}")
+            error_message = str(e)  # Already formatted with markdown
+            yield f"data: {json.dumps({'type': 'error', 'error': error_message})}\n\n"
+        except Exception as e:
+            print(f"[ERROR] Unexpected error in generate_automation_stream: {e}")
             import traceback
             traceback.print_exc()
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            
+            # Format unexpected errors nicely too
+            error_message = (
+                f"❌ An unexpected error occurred\n\n"
+                f"**Error type:** {type(e).__name__}\n\n"
+                f"**Details:** {str(e)}\n\n"
+                f"Please check the add-on logs for more information."
+            )
+            yield f"data: {json.dumps({'type': 'error', 'error': error_message})}\n\n"
     
     return Response(
         generate(),

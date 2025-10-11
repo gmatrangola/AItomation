@@ -12,6 +12,7 @@ export function useChat() {
     const isGenerating = ref(false);
     const isLoadingHistory = ref(true);
     const streamingMessage = ref<ChatMessage | null>(null);
+    const currentError = ref<string | null>(null);
 
     const latestYaml = computed(() => {
         // Find the most recent assistant message with YAML
@@ -45,7 +46,6 @@ export function useChat() {
     });
 
     // Watch messages and save to storage whenever they change
-    // Use debouncing to avoid saving too frequently
     let saveTimeout: number | null = null;
     watch(messages, (newMessages) => {
         if (saveTimeout) {
@@ -57,6 +57,11 @@ export function useChat() {
         }, 1000);
     }, { deep: true });
 
+    const clearError = () => {
+        console.log('[useChat] Clearing error');
+        currentError.value = null;
+    };
+
     const sendMessage = async (prompt: string) => {
         console.log('[useChat] sendMessage called');
         console.log('[useChat] Prompt:', prompt);
@@ -67,6 +72,9 @@ export function useChat() {
             console.log('[useChat] sendMessage aborted - empty prompt or already generating');
             return;
         }
+
+        // Clear any previous errors
+        currentError.value = null;
 
         // Add user message
         const userMessage: ChatMessage = {
@@ -112,28 +120,32 @@ export function useChat() {
             console.log('[useChat] Final message:', message);
             console.log('[useChat] Response error:', error);
             
-            // Replace streaming message with final message
+            // Clear streaming message
             streamingMessage.value = null;
-            messages.value.push(message);
-            console.log('[useChat] Messages after assistant add:', messages.value.length);
-
+            
             if (error) {
+                // Don't add error to messages - show in alert instead
                 console.error('[useChat] Chat error:', error);
+                currentError.value = message.content;
+                
+                // Remove the user message since the request failed
+                messages.value.pop();
+            } else {
+                // Add successful response to messages
+                messages.value.push(message);
+                console.log('[useChat] Messages after assistant add:', messages.value.length);
             }
         } catch (error) {
             console.error('[useChat] Exception in sendMessage:', error);
             
-            // Clear streaming message and add error message
+            // Clear streaming message
             streamingMessage.value = null;
             
-            const errorMessage: ChatMessage = {
-                id: uuidv4(),
-                role: 'assistant',
-                content: `I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
-                timestamp: new Date(),
-            };
-            console.log('[useChat] Adding error message:', errorMessage);
-            messages.value.push(errorMessage);
+            // Set error for display in alert
+            currentError.value = `I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`;
+            
+            // Remove the user message since the request failed
+            messages.value.pop();
         } finally {
             isGenerating.value = false;
             console.log('[useChat] Set isGenerating to false');
@@ -145,6 +157,7 @@ export function useChat() {
         console.log('[useChat] Clearing chat - current messages:', messages.value.length);
         messages.value = [];
         streamingMessage.value = null;
+        currentError.value = null;
         await ChatStorage.clear();
         console.log('[useChat] Chat cleared');
     };
@@ -155,7 +168,9 @@ export function useChat() {
         isLoadingHistory,
         latestYaml,
         streamingMessage,
+        currentError,
         sendMessage,
         clearChat,
+        clearError,
     };
 }

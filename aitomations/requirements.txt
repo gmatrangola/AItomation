@@ -5,3 +5,4 @@ requests
 google-generativeai
 pyyaml
 gunicorn
+zeroconf>=0.132.0
