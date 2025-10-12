@@ -25,15 +25,16 @@
         "llm_provider": "gemini",
         "gemini_api_key": "",
         "gemini_model": "gemini-2.5-pro",
-        "ollama_api_url": "http://ollama:11-generate",
-        "ollama_model": "llama3"
+        "ollama_api_url": "http://host.local:11434/api/generate",
+        "ollama_model": "llama3",
+        "request_timeout": 120
     },
     "schema": {
         "llm_provider": "list(gemini|ollama)",
         "gemini_api_key": "password?",
         "gemini_model": "list(gemini-2.5-flash|gemini-2.5-pro)?",
         "ollama_api_url": "url?",
-        "ollama_model": "str?"
-    },
-    "image": "ghcr.io/{arch}-aitomations-creator"
+        "ollama_model": "str?",
+        "request_timeout": "int(30,600)?"
+    }
 }

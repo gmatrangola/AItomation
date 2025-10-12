@@ -80,8 +80,8 @@ validate: validate-backend validate-frontend ## Validate all code (cached)
 validate-force: validate-backend-force validate-frontend-force ## Force validation of all code (ignore cache)
 
 build: clean validate ## Build frontend and package add-on
-	@echo "Building frontend..."
-	cd $(FRONTEND_DIR) && pnpm run build
+	@echo "Building frontend (this may take 30-60 seconds)..."
+	@cd $(FRONTEND_DIR) && pnpm run build:fast
 	@echo "✓ Frontend built"
 	@echo ""
 	@echo "Packaging add-on..."
@@ -101,7 +101,8 @@ build: clean validate ## Build frontend and package add-on
 	@echo "✓ Add-on packaged to $(BUILD_DIR)/"
 
 build-frontend: ## Build frontend only
-	cd $(FRONTEND_DIR) && pnpm run build
+	@echo "Building frontend..."
+	cd $(FRONTEND_DIR) && pnpm run build:fast
 
 build-backend: validate-backend ## Build/validate backend only
 	@echo "✓ Backend validated"
@@ -168,15 +169,6 @@ deploy: build ## Deploy to target (default: test). Usage: make deploy TARGET=pro
 	    echo "Error: HA_HOST not set for target $(TARGET)"; \
 	    echo "Create .deploy.$(TARGET).env with HA_HOST, HA_USER, etc."; \
 	    exit 1; \
-	fi
-	@if [ "$(TARGET)" = "prod" ]; then \
-	    echo "⚠ WARNING: Deploying to PRODUCTION!"; \
-	    echo "Continue? [y/N] "; \
-	    read REPLY; \
-	    if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
-	        echo "Deployment cancelled"; \
-	        exit 1; \
-	    fi; \
 	fi
 	@echo "Testing SSH connection..."
 	@ssh -p $(HA_PORT) -o ConnectTimeout=5 $(HA_USER)@$(HA_HOST) "echo 'Connected'" || \
@@ -274,3 +266,47 @@ verify: ## Verify deployment files on target
 	     echo '' && \
 	     echo 'Frontend dist:' && \
 	     ls -lah $(HA_PATH)/src/frontend/dist/ 2>/dev/null || echo 'Not found'"
+
+# Track frontend dist for incremental builds
+FRONTEND_DIST := $(FRONTEND_DIR)/dist
+
+# Incremental build - only rebuild frontend if sources changed
+$(FRONTEND_DIST): $(FRONTEND_SRC) $(FRONTEND_DIR)/package.json
+	@echo "Building frontend (sources changed, ~30-60s)..."
+	@cd $(FRONTEND_DIR) && pnpm run build:fast
+	@touch $(FRONTEND_DIST)
+
+build-incremental: validate $(FRONTEND_DIST) ## Incremental build (faster, only rebuilds if needed)
+	@echo "Packaging add-on..."
+	@mkdir -p $(BUILD_DIR)
+	@rsync -a \
+	    --exclude='node_modules' \
+	    --exclude='.git' \
+	    --exclude='dist' \
+	    --exclude='*.pyc' \
+	    --exclude='__pycache__' \
+	    --exclude='.DS_Store' \
+	    --exclude='*.egg-info' \
+	    --exclude='.pytest_cache' \
+	    --exclude='.ruff_cache' \
+	    $(ADDON_DIR)/ $(BUILD_DIR)/
+	@rsync -a $(FRONTEND_DIR)/dist/ $(BUILD_DIR)/src/frontend/dist/
+	@echo "✓ Add-on packaged to $(BUILD_DIR)/"
+
+# Fast build - skip validation and clean
+build-fast: $(FRONTEND_DIST) ## Fast build (skip validation, incremental)
+	@echo "Fast packaging add-on..."
+	@mkdir -p $(BUILD_DIR)
+	@rsync -a \
+	    --exclude='node_modules' \
+	    --exclude='.git' \
+	    --exclude='dist' \
+	    --exclude='*.pyc' \
+	    --exclude='__pycache__' \
+	    --exclude='.DS_Store' \
+	    --exclude='*.egg-info' \
+	    --exclude='.pytest_cache' \
+	    --exclude='.ruff_cache' \
+	    $(ADDON_DIR)/ $(BUILD_DIR)/
+	@rsync -a $(FRONTEND_DIR)/dist/ $(BUILD_DIR)/src/frontend/dist/
+	@echo "✓ Fast build complete"

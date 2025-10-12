@@ -10,31 +10,43 @@ logger = logging.getLogger(__name__)
 class OllamaProvider:
     def generate(self, prompt: str, options: dict) -> dict:
         """Generate text using Ollama."""
-        ollama_host = options.get('ollama_host', 'http://localhost:11434')
-        model = options.get('ollama_model', 'llama3.2')
+        # Get the full API URL from options (includes /api/generate)
+        ollama_api_url = options.get('ollama_api_url', 'http://localhost:11434/api/generate')
+        model = options.get('ollama_model', 'llama3')
         temperature = options.get('temperature', 0.7)
         max_tokens = options.get('max_tokens', 2048)
+        request_timeout = options.get('request_timeout', 120)  # Get timeout from config
+        
+        logger.info(f"Request timeout set to {request_timeout} seconds")
+        
+        # Extract base URL (without /api/generate) for resolution
+        if '/api/generate' in ollama_api_url:
+            base_url = ollama_api_url.replace('/api/generate', '')
+        else:
+            base_url = ollama_api_url
+            ollama_api_url = f"{base_url}/api/generate"
+        
+        logger.info(f"Original base URL: {base_url}")
         
         # Resolve .local hostnames using mDNS
         try:
-            resolved_host = resolve_hostname(ollama_host.rstrip('/'))
+            resolved_base = resolve_hostname(base_url.rstrip('/'))
+            url = f"{resolved_base}/api/generate"
+            logger.info(f"Resolved URL: {url}")
         except ValueError as e:
-            # e already contains formatted error message
             logger.error(f"Hostname resolution failed: {e}")
             raise ConnectionError(str(e))
         except Exception as e:
             error_msg = (
                 f"❌ Unexpected error resolving hostname\n\n"
-                f"**Configuration:** `{ollama_host}`\n\n"
+                f"**Configuration:** `{base_url}`\n\n"
                 f"**Technical details:** {str(e)}"
             )
             logger.error(error_msg)
             raise ConnectionError(error_msg)
         
-        url = f"{resolved_host}/api/generate"
-        
         # Parse URL to test connection
-        parsed = urlparse(resolved_host)
+        parsed = urlparse(resolved_base)
         hostname = parsed.hostname or 'localhost'
         port = parsed.port or 11434
         
@@ -50,13 +62,15 @@ class OllamaProvider:
                 f"   • Or check if the Ollama service is active\n\n"
                 f"2. ✓ Check if port {port} is accessible from Home Assistant\n"
                 f"   • Firewall may be blocking the connection\n"
-                f"   • Try accessing `{resolved_host}` from your browser\n\n"
+                f"   • Try accessing `{resolved_base}` from your browser\n\n"
                 f"3. ✓ If Ollama is in Docker, ensure ports are exposed\n"
                 f"   • Docker run command should include: `-p {port}:{port}`\n\n"
                 f"4. ✓ Verify network connectivity\n"
                 f"   • Can Home Assistant reach this host?\n"
                 f"   • Are they on the same network/VLAN?\n\n"
-                f"**Configuration:** `{ollama_host}` → `{resolved_host}`"
+                f"5. ✓ Check if `host_network: true` is set in config.json\n"
+                f"   • This allows the addon to access the host network\n\n"
+                f"**Configuration:** `{base_url}` → `{resolved_base}`"
             )
             logger.error(error_msg)
             raise ConnectionError(error_msg)
@@ -74,7 +88,7 @@ class OllamaProvider:
         }
         
         try:
-            response = requests.post(url, json=payload, timeout=120)
+            response = requests.post(url, json=payload, timeout=request_timeout)
             response.raise_for_status()
             
             result = response.json()
@@ -106,14 +120,15 @@ class OllamaProvider:
             
         except requests.exceptions.Timeout as e:
             error_msg = (
-                f"⏱️ Request timed out after 120 seconds\n\n"
+                f"⏱️ Request timed out after {request_timeout} seconds\n\n"
                 f"**Model:** `{model}`\n"
                 f"**Server:** `{url}`\n\n"
                 f"**Possible causes:**\n"
                 f"• The model '{model}' is not installed on the Ollama server\n"
                 f"• The model is too large and taking too long to respond\n"
                 f"• The Ollama server is under heavy load\n"
-                f"• Network connection is too slow\n\n"
+                f"• Network connection is too slow\n"
+                f"• Timeout setting ({request_timeout}s) may be too short\n\n"
                 f"**Solutions:**\n"
                 f"1. Check if the model is installed:\n"
                 f"   ```\n"
@@ -127,7 +142,10 @@ class OllamaProvider:
                 f"   • `llama3.2:1b` (smallest)\n"
                 f"   • `qwen2.5:3b`\n"
                 f"   • `phi3:mini`\n\n"
-                f"4. Check Ollama server logs for errors\n\n"
+                f"4. **Increase the timeout** in add-on Configuration tab\n"
+                f"   • Current: {request_timeout}s\n"
+                f"   • Try: 180s or 300s for larger models\n\n"
+                f"5. Check Ollama server logs for errors\n\n"
                 f"**Technical details:** {str(e)}"
             )
             logger.error(error_msg)
@@ -140,7 +158,7 @@ class OllamaProvider:
             if status_code == 404:
                 error_msg = (
                     f"❌ Model '{model}' not found on Ollama server\n\n"
-                    f"**Server:** `{resolved_host}`\n\n"
+                    f"**Server:** `{resolved_base}`\n\n"
                     f"**To fix this:**\n\n"
                     f"1. Install the model on your Ollama server:\n"
                     f"   ```\n"
@@ -189,7 +207,7 @@ class OllamaProvider:
                 f"2. Check Home Assistant add-on logs\n"
                 f"3. Verify network connectivity is stable\n"
                 f"4. Try restarting both Ollama and this add-on\n\n"
-                f"**Configuration:** `{ollama_host}` → `{resolved_host}`\n\n"
+                f"**Configuration:** `{base_url}` → `{resolved_base}`\n\n"
                 f"**Technical details:** {str(e)}"
             )
             logger.error(error_msg)

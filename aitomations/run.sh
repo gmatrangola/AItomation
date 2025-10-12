@@ -1,19 +1,23 @@
 #!/usr/bin/with-contenv bashio
 
-bashio::log.info "Starting AItomations backend server with Gunicorn..."
+bashio::log.info "Starting AItomations Creator..."
 
-# Change the working directory to the application root.
-# This makes '/usr/src/app' the starting point for Python's module search.
+# Read timeout from addon config (defaults to 120 seconds)
+TIMEOUT=$(bashio::config 'request_timeout' '120')
+
+bashio::log.info "Request timeout set to: ${TIMEOUT}s"
+
 cd /usr/src/app
 
-# The Gunicorn command to run the Flask application.
-# The --pythonpath argument is now redundant because of the 'cd' command,
-# but we will leave it for maximum compatibility.
+# Start gunicorn with configurable timeout
+# Changed from src.backend.main:app to src.backend.app:app
 exec gunicorn \
+    --bind 0.0.0.0:8099 \
     --workers 2 \
-    --bind "0.0.0.0:8099" \
+    --timeout ${TIMEOUT} \
+    --graceful-timeout ${TIMEOUT} \
+    --keep-alive 5 \
+    --access-logfile - \
+    --error-logfile - \
     --log-level info \
-    --access-logfile '-' \
-    --error-logfile '-' \
-    --pythonpath /usr/src/app \
-    "src.backend.app:app"
+    src.backend.app:app

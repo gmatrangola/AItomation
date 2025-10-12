@@ -8,14 +8,13 @@ export default defineConfig({
   plugins: [
     vue(),
     vuetify({
-      autoImport: true, // Automatically import components
-      labs: true,       // Enable Vuetify Labs components like VDataTable
+      autoImport: true,
     }),
   ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
-    },
+    }
   },
   server: {
     port: 5173,
@@ -32,6 +31,28 @@ export default defineConfig({
     assetsDir: 'assets',
     sourcemap: false,
     minify: 'esbuild',
+    target: 'es2015',
+    cssCodeSplit: true,
+    chunkSizeWarningLimit: 1000,
+    reportCompressedSize: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('vuetify')) {
+              return 'vuetify';
+            }
+            if (id.includes('vue')) {
+              return 'vue-vendor';
+            }
+            return 'vendor';
+          }
+        }
+      }
+    },
+  },
+  optimizeDeps: {
+    include: ['vue', 'vue-router', 'vuetify'],
   },
   base: './',
 })
