@@ -6,3 +6,6 @@ google-generativeai
 pyyaml
 gunicorn
 zeroconf>=0.132.0
+mypy
+types-requests
+types-PyYAML

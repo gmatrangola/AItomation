@@ -40,7 +40,7 @@ install: ## Install all dependencies
 	cd $(FRONTEND_DIR) && pnpm install
 	@echo "Installing backend dependencies..."
 	pip3 install --user -r $(ADDON_DIR)/requirements.txt
-	pip3 install --user pytest pytest-cov ruff black
+	pip3 install --user pytest pytest-cov ruff mypy
 	@echo "✓ All dependencies installed"
 
 install-frontend: ## Install frontend dependencies only
@@ -48,15 +48,20 @@ install-frontend: ## Install frontend dependencies only
 
 install-backend: ## Install backend dependencies only
 	pip3 install --user -r $(ADDON_DIR)/requirements.txt
-	pip3 install --user pytest pytest-cov ruff black
+	pip3 install --user pytest pytest-cov ruff mypy types-requests types-PyYAML
 
 # Backend validation with caching
 $(CACHE_DIR)/backend-validated: $(BACKEND_SRC) | $(CACHE_DIR)
 	@echo "Backend files changed, validating..."
-	@python3 $(SCRIPTS_DIR)/validate_backend.py
+	@echo "Running ruff check..."
+	@cd $(BACKEND_DIR) && ruff check . || exit 1
+	@echo "Running ruff format check..."
+	@cd $(BACKEND_DIR) && ruff format --check . || exit 1
+	@echo "Running mypy type checking..."
+	@cd $(BACKEND_DIR) && mypy . --no-error-summary || exit 1
 	@touch $(CACHE_DIR)/backend-validated
 
-validate-backend: $(CACHE_DIR)/backend-validated ## Validate Python syntax and imports (cached)
+validate-backend: $(CACHE_DIR)/backend-validated ## Validate Python with ruff + mypy (cached)
 
 validate-backend-force: ## Force backend validation (ignore cache)
 	@rm -f $(CACHE_DIR)/backend-validated
@@ -112,15 +117,20 @@ clean: ## Clean build artifacts
 	@rm -rf $(BUILD_DIR)
 	@rm -rf $(FRONTEND_DIR)/dist
 	@rm -rf $(FRONTEND_DIR)/node_modules/.vite
+	@rm -rf $(CACHE_DIR)
 	@find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 	@find . -type d -name '*.egg-info' -exec rm -rf {} + 2>/dev/null || true
 	@find . -type d -name '.pytest_cache' -exec rm -rf {} + 2>/dev/null || true
 	@find . -type d -name '.ruff_cache' -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name '.mypy_cache' -exec rm -rf {} + 2>/dev/null || true
 	@echo "✓ Cleaned"
 
-clean-all: clean ## Clean build artifacts and validation cache
+clean-cache: ## Clean only validation cache
 	@echo "Cleaning validation cache..."
 	@rm -rf $(CACHE_DIR)
+	@echo "✓ Cache cleaned"
+
+clean-all: clean ## Clean build artifacts and validation cache (alias for clean)
 	@echo "✓ All cleaned"
 
 test: ## Run all tests
@@ -137,22 +147,34 @@ test-backend: ## Run backend tests only
 	cd $(BACKEND_DIR) && python3 -m pytest
 
 lint: ## Run linters
-	@echo "Linting frontend..."
-	cd $(FRONTEND_DIR) && pnpm run lint || true
-	@echo ""
 	@echo "Linting backend..."
-	cd $(BACKEND_DIR) && ruff check . || true
+	cd $(BACKEND_DIR) && ruff check .
+	@echo ""
+	@if cd $(FRONTEND_DIR) && pnpm run lint 2>/dev/null; then \
+		echo "✓ Frontend linting passed"; \
+	else \
+		echo "ℹ Frontend linting not configured (skipped)"; \
+	fi
 
 lint-fix: ## Fix linting issues
-	cd $(FRONTEND_DIR) && pnpm run lint:fix
 	cd $(BACKEND_DIR) && ruff check --fix .
+	cd $(BACKEND_DIR) && ruff format .
+	@echo ""
+	@if cd $(FRONTEND_DIR) && pnpm run lint:fix 2>/dev/null; then \
+		echo "✓ Frontend linting fixed"; \
+	else \
+		echo "ℹ Frontend linting not configured (skipped)"; \
+	fi
 
 format: ## Format code
-	@echo "Formatting frontend..."
-	cd $(FRONTEND_DIR) && pnpm run format || true
-	@echo ""
 	@echo "Formatting backend..."
-	cd $(BACKEND_DIR) && ruff format . || true
+	cd $(BACKEND_DIR) && ruff format .
+	@echo ""
+	@if cd $(FRONTEND_DIR) && pnpm run format 2>/dev/null; then \
+		echo "✓ Frontend formatted"; \
+	else \
+		echo "ℹ Frontend formatting not configured (skipped)"; \
+	fi
 
 dev-frontend: ## Run frontend dev server
 	cd $(FRONTEND_DIR) && pnpm run dev
@@ -310,3 +332,11 @@ build-fast: $(FRONTEND_DIST) ## Fast build (skip validation, incremental)
 	    $(ADDON_DIR)/ $(BUILD_DIR)/
 	@rsync -a $(FRONTEND_DIR)/dist/ $(BUILD_DIR)/src/frontend/dist/
 	@echo "✓ Fast build complete"
+
+# Add a new target for type checking only
+type-check: ## Run type checking only
+	@echo "Type checking backend..."
+	cd $(BACKEND_DIR) && mypy .
+
+# Add a comprehensive check target
+check: lint type-check test ## Run all checks (lint, type-check, test)

@@ -1,51 +1,49 @@
 """Network utilities for hostname resolution including mDNS."""
 
-import socket
 import logging
-from typing import Optional
+import socket
+
 from zeroconf import Zeroconf
 
 logger = logging.getLogger(__name__)
 
 
-def resolve_mdns_hostname(hostname: str, timeout: float = 3.0) -> Optional[str]:
+def resolve_mdns_hostname(hostname: str, timeout: float = 3.0) -> str | None:
     """
     Resolve a .local mDNS hostname to an IP address using zeroconf.
-    
+
     Args:
         hostname: The .local hostname to resolve (e.g., 'foil.local')
         timeout: Maximum time to wait for resolution in seconds
-    
+
     Returns:
         IP address as string, or None if resolution fails
-    
+
     Raises:
         ValueError: If hostname cannot be resolved with detailed troubleshooting info
     """
-    if not hostname.endswith('.local'):
+    if not hostname.endswith(".local"):
         return None
-    
+
     logger.info(f"Attempting mDNS resolution for {hostname}")
-    
+
     zc = None
     try:
         zc = Zeroconf()
-        
+
         # Remove .local suffix for the query
-        name = hostname.replace('.local', '')
-        
+        name = hostname.replace(".local", "")
+
         # Query for A record (IPv4)
         info = zc.get_service_info(
-            "_workstation._tcp.local.",
-            f"{name}._workstation._tcp.local.",
-            timeout=int(timeout * 1000)
+            "_workstation._tcp.local.", f"{name}._workstation._tcp.local.", timeout=int(timeout * 1000)
         )
-        
+
         if info and info.addresses:
             ip = socket.inet_ntoa(info.addresses[0])
             logger.info(f"Resolved {hostname} to {ip} via mDNS")
             return ip
-        
+
         # Try direct hostname lookup as fallback
         try:
             ip = socket.gethostbyname(hostname)
@@ -53,7 +51,7 @@ def resolve_mdns_hostname(hostname: str, timeout: float = 3.0) -> Optional[str]:
             return ip
         except socket.gaierror:
             pass
-            
+
     except Exception as e:
         logger.warning(f"mDNS resolution failed for {hostname}: {e}")
         error_msg = (
@@ -66,11 +64,11 @@ def resolve_mdns_hostname(hostname: str, timeout: float = 3.0) -> Optional[str]:
             f"5. Ensure no firewall is blocking mDNS (UDP port 5353)\n\n"
             f"**Technical details:** {str(e)}"
         )
-        raise ValueError(error_msg)
+        raise ValueError(error_msg) from e
     finally:
         if zc:
             zc.close()
-    
+
     # If we get here, resolution failed
     error_msg = (
         f"❌ Cannot resolve '{hostname}' - host not found on network\n\n"
@@ -89,37 +87,32 @@ def resolve_mdns_hostname(hostname: str, timeout: float = 3.0) -> Optional[str]:
 def resolve_hostname(url: str, timeout: float = 3.0) -> str:
     """
     Resolve hostname in URL to IP address, supporting both DNS and mDNS.
-    
+
     Args:
         url: Full URL (e.g., 'http://foil.local:11434')
         timeout: Maximum time to wait for resolution
-    
+
     Returns:
         URL with hostname replaced by IP address
-        
+
     Raises:
         ValueError: If hostname cannot be resolved with troubleshooting guidance
     """
     original_url = url
-    
+
     # Extract hostname from URL
-    hostname_only = (
-        url.replace('http://', '')
-        .replace('https://', '')
-        .split(':')[0]
-        .split('/')[0]
-    )
-    
+    hostname_only = url.replace("http://", "").replace("https://", "").split(":")[0].split("/")[0]
+
     # Check if it's already an IP address
     try:
         socket.inet_aton(hostname_only)
         logger.debug(f"{hostname_only} is already an IP address")
         return original_url
-    except socket.error:
+    except OSError:
         pass
-    
+
     # Try mDNS resolution for .local hostnames
-    if hostname_only.endswith('.local'):
+    if hostname_only.endswith(".local"):
         try:
             ip = resolve_mdns_hostname(hostname_only, timeout)
             if ip:
@@ -128,7 +121,7 @@ def resolve_hostname(url: str, timeout: float = 3.0) -> str:
                 return resolved_url
         except ValueError:
             raise
-    
+
     # Try standard DNS resolution
     try:
         ip = socket.gethostbyname(hostname_only)
@@ -147,18 +140,18 @@ def resolve_hostname(url: str, timeout: float = 3.0) -> str:
             f"**Technical details:** {str(e)}"
         )
         logger.error(error_msg)
-        raise ValueError(error_msg)
+        raise ValueError(error_msg) from e
 
 
 def test_connection(host: str, port: int, timeout: float = 5.0) -> bool:
     """
     Test if a TCP connection can be established to host:port.
-    
+
     Args:
         host: Hostname or IP address
         port: Port number
         timeout: Connection timeout in seconds
-    
+
     Returns:
         True if connection succeeds, False otherwise
     """

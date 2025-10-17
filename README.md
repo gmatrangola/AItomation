@@ -53,6 +53,28 @@ The project is configured to run inside a self-contained Dev Container, which in
 
 The postCreateCommand in .devcontainer/devcontainer.json will automatically install all Python and Node.js dependencies for you.
 
+To validate your code before committing:
+
+```bash
+# Quick validation (uses cache)
+make validate
+
+# Force full validation
+make validate-force
+
+# Run linter only
+make lint
+
+# Fix linting issues automatically
+make lint-fix
+
+# Run type checking only
+make type-check
+
+# Run all checks
+make check
+```
+
 ## **Running in Development Mode**
 
 To work on the application locally, you need to run the Python backend and the Vue frontend simultaneously in separate terminals.

@@ -34,3 +34,4 @@ __pycache__/
 # Node
 node_modules/
 .vite/
+.mypy_cache/

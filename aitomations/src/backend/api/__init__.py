@@ -1,3 +1,5 @@
-# This file makes the 'api' directory a Python package.
-# It can be left empty, but explicitly importing the blueprint can help with discovery.
+"""API routes package."""
+
 from .routes import api_blueprint
+
+__all__ = ["api_blueprint"]

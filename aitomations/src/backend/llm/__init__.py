@@ -1,7 +1,7 @@
-"""LLM provider implementations."""
+"""LLM providers package."""
 
 from .base import LLMProvider
-from .ollama import OllamaProvider
 from .gemini import GeminiProvider
+from .ollama import OllamaProvider
 
-__all__ = ['LLMProvider', 'OllamaProvider', 'GeminiProvider']
+__all__ = ["LLMProvider", "GeminiProvider", "OllamaProvider"]

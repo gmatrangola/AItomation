@@ -1,6 +1,8 @@
 # aitomations/src/backend/llm/gemini.py
 import google.generativeai as genai
+
 from .base import LLMProvider
+
 
 class GeminiProvider(LLMProvider):
     def generate(self, prompt: str, options: dict) -> dict:

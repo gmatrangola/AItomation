@@ -1,41 +1,45 @@
-from .base import LLMProvider
-import requests
 import logging
+from typing import Any
 from urllib.parse import urlparse
-from ..api.network import resolve_hostname, test_connection
+
+import requests
+
+from api.network import resolve_hostname, test_connection
+
+from .base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
 
 class OllamaProvider(LLMProvider):
-    def generate(self, prompt: str, options: dict) -> dict:
+    def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
         """Generate text using Ollama."""
         # Get the full API URL from options (includes /api/generate)
-        ollama_api_url = options.get('ollama_api_url', 'http://localhost:11434/api/generate')
-        model = options.get('ollama_model', 'llama3')
-        temperature = options.get('temperature', 0.7)
-        max_tokens = options.get('max_tokens', 2048)
-        request_timeout = options.get('request_timeout', 120)  # Get timeout from config
-        
+        ollama_api_url = options.get("ollama_api_url", "http://localhost:11434/api/generate")
+        model = options.get("ollama_model", "llama3")
+        temperature = options.get("temperature", 0.7)
+        max_tokens = options.get("max_tokens", 2048)
+        request_timeout = options.get("request_timeout", 120)  # Get timeout from config
+
         logger.info(f"Request timeout set to {request_timeout} seconds")
-        
+
         # Extract base URL (without /api/generate) for resolution
-        if '/api/generate' in ollama_api_url:
-            base_url = ollama_api_url.replace('/api/generate', '')
+        if "/api/generate" in ollama_api_url:
+            base_url = ollama_api_url.replace("/api/generate", "")
         else:
             base_url = ollama_api_url
             ollama_api_url = f"{base_url}/api/generate"
-        
+
         logger.info(f"Original base URL: {base_url}")
-        
+
         # Resolve .local hostnames using mDNS
         try:
-            resolved_base = resolve_hostname(base_url.rstrip('/'))
+            resolved_base = resolve_hostname(base_url.rstrip("/"))
             url = f"{resolved_base}/api/generate"
             logger.info(f"Resolved URL: {url}")
         except ValueError as e:
             logger.error(f"Hostname resolution failed: {e}")
-            raise ConnectionError(str(e))
+            raise ConnectionError(str(e)) from e
         except Exception as e:
             error_msg = (
                 f"❌ Unexpected error resolving hostname\n\n"
@@ -43,13 +47,13 @@ class OllamaProvider(LLMProvider):
                 f"**Technical details:** {str(e)}"
             )
             logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        
+            raise ConnectionError(error_msg) from e
+
         # Parse URL to test connection
         parsed = urlparse(resolved_base)
-        hostname = parsed.hostname or 'localhost'
+        hostname = parsed.hostname or "localhost"
         port = parsed.port or 11434
-        
+
         # Test connection before attempting request
         logger.info(f"Testing connection to Ollama at {hostname}:{port}")
         if not test_connection(hostname, port, timeout=3.0):
@@ -74,34 +78,30 @@ class OllamaProvider(LLMProvider):
             )
             logger.error(error_msg)
             raise ConnectionError(error_msg)
-        
+
         logger.info(f"Calling Ollama at {url} with model {model}")
-        
+
         payload = {
-            'model': model,
-            'prompt': prompt,
-            'stream': False,
-            'options': {
-                'temperature': temperature,
-                'num_predict': max_tokens,
-            }
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
         }
-        
+
         try:
             response = requests.post(url, json=payload, timeout=request_timeout)
             response.raise_for_status()
-            
+
             result = response.json()
-            full_response = result.get('response', '')
-            
+            full_response = result.get("response", "")
+
             logger.info(f"Ollama response received, length: {len(full_response)}")
-            
-            return {
-                'full_response': full_response,
-                'model': model,
-                'provider': 'ollama'
-            }
-            
+
+            return {"full_response": full_response, "model": model, "provider": "ollama"}
+
         except requests.exceptions.ConnectionError as e:
             error_msg = (
                 f"❌ Connection lost to Ollama server\n\n"
@@ -116,8 +116,8 @@ class OllamaProvider(LLMProvider):
                 f"**Technical details:** {str(e)}"
             )
             logger.error(error_msg)
-            raise ConnectionError(error_msg)
-            
+            raise ConnectionError(error_msg) from e
+
         except requests.exceptions.Timeout as e:
             error_msg = (
                 f"⏱️ Request timed out after {request_timeout} seconds\n\n"
@@ -149,12 +149,12 @@ class OllamaProvider(LLMProvider):
                 f"**Technical details:** {str(e)}"
             )
             logger.error(error_msg)
-            raise TimeoutError(error_msg)
-            
+            raise TimeoutError(error_msg) from e
+
         except requests.exceptions.HTTPError as e:
-            status_code = e.response.status_code if e.response else 'unknown'
-            error_body = e.response.text if e.response else 'No response body'
-            
+            status_code = e.response.status_code if e.response else "unknown"
+            error_body = e.response.text if e.response else "No response body"
+
             if status_code == 404:
                 error_msg = (
                     f"❌ Model '{model}' not found on Ollama server\n\n"
@@ -192,10 +192,10 @@ class OllamaProvider(LLMProvider):
                     f"   • Try: `ollama run {model} 'Hello'`\n"
                     f"4. Restart the Ollama service if needed"
                 )
-            
+
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
-            
+            raise RuntimeError(error_msg) from e
+
         except requests.exceptions.RequestException as e:
             error_msg = (
                 f"❌ Unexpected network error\n\n"
@@ -211,4 +211,4 @@ class OllamaProvider(LLMProvider):
                 f"**Technical details:** {str(e)}"
             )
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(error_msg) from e
