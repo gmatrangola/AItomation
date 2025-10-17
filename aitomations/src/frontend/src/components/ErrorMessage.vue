@@ -1,7 +1,13 @@
 <template>
-    <v-alert v-if="formattedError" type="error" variant="tonal" closable @click:close="$emit('close')"
-        class="error-alert ma-3 mb-0">
-        <template v-slot:prepend>
+    <v-alert
+        v-if="formattedError"
+        type="error"
+        variant="tonal"
+        closable
+        class="error-alert ma-3 mb-0"
+        @click:close="$emit('close')"
+    >
+        <template #prepend>
             <span class="error-icon">{{ formattedError.icon }}</span>
         </template>
 
@@ -160,11 +166,7 @@ const formattedError = computed((): FormattedError | null => {
             icon: '🌐',
             title: 'Cannot connect to the backend server',
             stepsTitle: 'Please check:',
-            steps: [
-                'The add-on is running',
-                'Your network connection',
-                'Home Assistant is accessible',
-            ],
+            steps: ['The add-on is running', 'Your network connection', 'Home Assistant is accessible'],
             details: props.error,
         };
     }

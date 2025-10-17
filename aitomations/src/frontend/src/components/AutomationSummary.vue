@@ -15,7 +15,7 @@
                 <v-icon class="mr-2">mdi-code-braces</v-icon>
                 Automation YAML
                 <v-spacer />
-                <v-btn @click="copyToClipboard" variant="text" size="small" :color="copied ? 'success' : 'primary'">
+                <v-btn variant="text" size="small" :color="copied ? 'success' : 'primary'" @click="copyToClipboard">
                     <v-icon>{{ copied ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
                     {{ copied ? 'Copied!' : 'Copy' }}
                 </v-btn>
@@ -28,12 +28,12 @@
 
         <!-- Action Buttons -->
         <div class="d-flex gap-3">
-            <v-btn @click="$emit('install')" :loading="installing" color="success" size="large" variant="elevated">
+            <v-btn :loading="installing" color="success" size="large" variant="elevated" @click="$emit('install')">
                 <v-icon left>mdi-download</v-icon>
                 Install in Home Assistant
             </v-btn>
 
-            <v-btn @click="$emit('modify')" :loading="modifying" color="primary" size="large" variant="outlined">
+            <v-btn :loading="modifying" color="primary" size="large" variant="outlined" @click="$emit('modify')">
                 <v-icon left>mdi-pencil</v-icon>
                 Modify
             </v-btn>
@@ -42,35 +42,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from 'vue';
 
 interface AutomationResponse {
-    summary: string
-    yaml: string
+    summary: string;
+    yaml: string;
 }
 
 const props = defineProps<{
-    automation: AutomationResponse
-    installing: boolean
-    modifying: boolean
-}>()
+    automation: AutomationResponse;
+    installing: boolean;
+    modifying: boolean;
+}>();
 
 defineEmits<{
-    install: []
-    modify: []
-}>()
+    install: [];
+    modify: [];
+}>();
 
-const copied = ref(false)
+const copied = ref(false);
 
 async function copyToClipboard() {
     try {
-        await navigator.clipboard.writeText(props.automation.yaml)
-        copied.value = true
+        await navigator.clipboard.writeText(props.automation.yaml);
+        copied.value = true;
         setTimeout(() => {
-            copied.value = false
-        }, 2000)
+            copied.value = false;
+        }, 2000);
     } catch (error) {
-        console.error('Failed to copy to clipboard:', error)
+        console.error('Failed to copy to clipboard:', error);
     }
 }
 </script>

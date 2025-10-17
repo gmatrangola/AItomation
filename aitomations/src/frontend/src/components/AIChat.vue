@@ -6,12 +6,15 @@
                 <div class="empty-state">
                     <v-icon size="48" color="primary">mdi-chat-outline</v-icon>
                     <h3 class="mt-3">Start a Conversation</h3>
-                    <p class="text-secondary mt-2">
-                        Describe the automation you'd like to create
-                    </p>
+                    <p class="text-secondary mt-2">Describe the automation you'd like to create</p>
                     <div class="example-prompts mt-4">
-                        <v-chip v-for="example in examplePrompts" :key="example" size="small" class="ma-1"
-                            @click="selectExample(example)">
+                        <v-chip
+                            v-for="example in examplePrompts"
+                            :key="example"
+                            size="small"
+                            class="ma-1"
+                            @click="selectExample(example)"
+                        >
                             {{ example }}
                         </v-chip>
                     </div>
@@ -19,12 +22,22 @@
             </template>
 
             <template v-else>
-                <ChatMessage v-for="message in messages" :key="message.id" :message="message"
-                    :show-install-button="message.yaml === latestYaml" @install="handleInstallAutomation" />
+                <ChatMessage
+                    v-for="message in messages"
+                    :key="message.id"
+                    :message="message"
+                    :show-install-button="message.yaml === latestYaml"
+                    @install="handleInstallAutomation"
+                />
 
                 <!-- Streaming message (real-time) -->
-                <ChatMessage v-if="streamingMessage" :key="streamingMessage.id" :message="streamingMessage"
-                    :show-install-button="false" class="streaming-message" />
+                <ChatMessage
+                    v-if="streamingMessage"
+                    :key="streamingMessage.id"
+                    :message="streamingMessage"
+                    :show-install-button="false"
+                    class="streaming-message"
+                />
 
                 <!-- Loading indicator (only show before streaming starts) -->
                 <div v-if="isGenerating && !streamingMessage" class="chat-message chat-message--assistant">
@@ -49,14 +62,33 @@
         <div class="chat-input-wrapper">
             <v-divider />
             <div class="chat-input">
-                <v-textarea v-model="internalPrompt"
-                    :placeholder="messages.length === 0 ? 'e.g., Turn on the porch light at sunset...' : 'Refine or ask for changes...'"
-                    rows="1" auto-grow max-rows="3" :disabled="isGenerating" variant="outlined" density="compact"
-                    @keydown.enter.exact.prevent="handleSend" @keydown.enter.shift.exact="handleNewLine" hide-details
-                    class="compact-input">
-                    <template v-slot:append-inner>
-                        <v-btn :disabled="!internalPrompt.trim() || isGenerating" @click="handleSend" icon size="small"
-                            color="primary" variant="flat">
+                <v-textarea
+                    v-model="internalPrompt"
+                    :placeholder="
+                        messages.length === 0
+                            ? 'e.g., Turn on the porch light at sunset...'
+                            : 'Refine or ask for changes...'
+                    "
+                    rows="1"
+                    auto-grow
+                    max-rows="3"
+                    :disabled="isGenerating"
+                    variant="outlined"
+                    density="compact"
+                    hide-details
+                    class="compact-input"
+                    @keydown.enter.exact.prevent="handleSend"
+                    @keydown.enter.shift.exact="handleNewLine"
+                >
+                    <template #append-inner>
+                        <v-btn
+                            :disabled="!internalPrompt.trim() || isGenerating"
+                            icon
+                            size="small"
+                            color="primary"
+                            variant="flat"
+                            @click="handleSend"
+                        >
                             <v-icon size="small">mdi-send</v-icon>
                         </v-btn>
                     </template>
@@ -72,7 +104,8 @@ import { useChat } from '@/composables/useChat';
 import ChatMessage from './ChatMessage.vue';
 import ErrorMessage from './ErrorMessage.vue';
 
-const { messages, isGenerating, latestYaml, streamingMessage, currentError, sendMessage, clearChat, clearError } = useChat();
+const { messages, isGenerating, latestYaml, streamingMessage, currentError, sendMessage, clearChat, clearError } =
+    useChat();
 
 interface Props {
     modelValue?: string;
@@ -91,16 +124,16 @@ const emit = defineEmits<{
 const internalPrompt = ref(props.modelValue);
 const messagesContainer = ref<HTMLElement>();
 
-const examplePrompts = [
-    'Turn on lights at sunset',
-    'Notify me when door opens',
-    'Coffee maker on weekdays at 7am',
-];
+const examplePrompts = ['Turn on lights at sunset', 'Notify me when door opens', 'Coffee maker on weekdays at 7am'];
 
 // Emit whether we have messages
-watch(messages, (newMessages) => {
-    emit('has-messages', newMessages.length > 0);
-}, { immediate: true, deep: true });
+watch(
+    messages,
+    (newMessages) => {
+        emit('has-messages', newMessages.length > 0);
+    },
+    { immediate: true, deep: true }
+);
 
 // Watch for external prompt changes
 watch(
@@ -116,12 +149,16 @@ watch(internalPrompt, (newValue) => {
 });
 
 // Scroll to bottom when messages or streaming message changes
-watch([messages, streamingMessage], async () => {
-    await nextTick();
-    if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-    }
-}, { deep: true });
+watch(
+    [messages, streamingMessage],
+    async () => {
+        await nextTick();
+        if (messagesContainer.value) {
+            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
+        }
+    },
+    { deep: true }
+);
 
 const handleSend = async () => {
     if (!internalPrompt.value.trim() || isGenerating.value) return;
@@ -151,7 +188,7 @@ const handleInstallAutomation = (yaml: string) => {
 
 // Expose clearChat for parent component
 defineExpose({
-    clearChat
+    clearChat,
 });
 </script>
 
@@ -203,7 +240,6 @@ defineExpose({
 }
 
 @keyframes blink {
-
     0%,
     50% {
         opacity: 1;

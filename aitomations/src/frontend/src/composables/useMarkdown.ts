@@ -8,15 +8,15 @@ hljs.registerLanguage('yaml', yaml);
 export function useMarkdown() {
     const renderMarkdown = (content: string): string => {
         if (!content) return '';
-        
+
         try {
             // First render markdown to HTML
             const html = marked(content) as string;
-            
+
             // Then apply syntax highlighting to code blocks
             const div = document.createElement('div');
             div.innerHTML = html;
-            
+
             // Find all code blocks and highlight them
             div.querySelectorAll('pre code').forEach((block) => {
                 const codeElement = block as HTMLElement;
@@ -26,7 +26,7 @@ export function useMarkdown() {
                     hljs.highlightElement(codeElement);
                 }
             });
-            
+
             return div.innerHTML;
         } catch (error) {
             console.error('Markdown rendering failed:', error);
@@ -35,6 +35,6 @@ export function useMarkdown() {
     };
 
     return {
-        renderMarkdown
+        renderMarkdown,
     };
 }

@@ -2,7 +2,7 @@
     <div class="dashboard">
         <!-- Compact Action Bar -->
         <div class="action-bar">
-            <v-btn variant="text" size="small" color="error" @click="handleClearChat" v-if="hasMessages">
+            <v-btn v-if="hasMessages" variant="text" size="small" color="error" @click="handleClearChat">
                 <v-icon start size="small">mdi-delete</v-icon>
                 Clear
             </v-btn>
@@ -17,13 +17,17 @@
 
         <!-- Main Chat Area -->
         <div class="chat-wrapper">
-            <AIChat ref="chatRef" v-model="prompt" @install-automation="handleInstallAutomation"
-                @has-messages="hasMessages = $event" />
+            <AIChat
+                ref="chatRef"
+                v-model="prompt"
+                @install-automation="handleInstallAutomation"
+                @has-messages="hasMessages = $event"
+            />
         </div>
 
         <!-- Automation List Drawer -->
         <v-navigation-drawer v-model="drawer" location="right" temporary width="400" class="automation-drawer">
-            <template v-slot:prepend>
+            <template #prepend>
                 <div class="drawer-header">
                     <div class="drawer-title">
                         <v-icon size="small" class="mr-2">mdi-cog-outline</v-icon>
@@ -43,13 +47,11 @@
                 </v-list-item>
 
                 <v-list-item v-else-if="automations.length === 0">
-                    <v-list-item-title class="text-secondary text-caption">
-                        No automations found
-                    </v-list-item-title>
+                    <v-list-item-title class="text-secondary text-caption"> No automations found </v-list-item-title>
                 </v-list-item>
 
                 <v-list-item v-for="automation in automations" :key="automation.id" class="automation-item">
-                    <template v-slot:prepend>
+                    <template #prepend>
                         <v-avatar :color="automation.state === 'on' ? 'success' : 'grey'" size="28">
                             <v-icon size="x-small" color="white">
                                 {{ automation.state === 'on' ? 'mdi-check' : 'mdi-power' }}
@@ -66,9 +68,15 @@
                         {{ truncate(automation.prompt, 40) }}
                     </v-list-item-subtitle>
 
-                    <template v-slot:append>
-                        <v-btn v-if="automation.is_editable" size="x-small" @click="handleEditAutomation(automation)"
-                            color="primary" variant="text" icon>
+                    <template #append>
+                        <v-btn
+                            v-if="automation.is_editable"
+                            size="x-small"
+                            color="primary"
+                            variant="text"
+                            icon
+                            @click="handleEditAutomation(automation)"
+                        >
                             <v-icon size="small">mdi-pencil</v-icon>
                         </v-btn>
                     </template>
@@ -122,7 +130,7 @@ const handleInstallAutomation = async (yaml: string) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 automation_yaml: yaml,
-                prompt: prompt.value
+                prompt: prompt.value,
             }),
         });
 

@@ -4,7 +4,7 @@ export interface ChatMessage {
     content: string;
     timestamp: Date;
     yaml?: string;
-    error?: boolean;  // Add this line
+    error?: boolean; // Add this line
 }
 
 export interface ChatSession {

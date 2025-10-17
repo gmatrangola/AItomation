@@ -35,3 +35,16 @@ __pycache__/
 node_modules/
 .vite/
 .mypy_cache/
+
+# ESLint
+.eslintcache
+
+# Frontend
+aitomations/src/frontend/dist
+aitomations/src/frontend/.vite
+
+# Make cache
+.make-cache/
+
+# TypeScript incremental cache
+node_modules/.cache/

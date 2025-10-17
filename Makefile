@@ -25,6 +25,10 @@ include .deploy.env
 FRONTEND_SRC := $(shell find $(FRONTEND_DIR)/src -type f \( -name "*.vue" -o -name "*.ts" -o -name "*.js" \) 2>/dev/null)
 BACKEND_SRC := $(shell find $(BACKEND_DIR) -type f -name "*.py" 2>/dev/null)
 
+# Track config files that affect validation
+FRONTEND_CONFIG := $(FRONTEND_DIR)/tsconfig.json $(FRONTEND_DIR)/eslint.config.js $(FRONTEND_DIR)/package.json
+BACKEND_CONFIG := $(BACKEND_DIR)/pyproject.toml
+
 help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
@@ -51,7 +55,7 @@ install-backend: ## Install backend dependencies only
 	pip3 install --user pytest pytest-cov ruff mypy types-requests types-PyYAML
 
 # Backend validation with caching
-$(CACHE_DIR)/backend-validated: $(BACKEND_SRC) | $(CACHE_DIR)
+$(CACHE_DIR)/backend-validated: $(BACKEND_SRC) $(BACKEND_CONFIG) | $(CACHE_DIR)
 	@echo "Backend files changed, validating..."
 	@echo "Running ruff check..."
 	@cd $(BACKEND_DIR) && ruff check . || exit 1
@@ -67,18 +71,35 @@ validate-backend-force: ## Force backend validation (ignore cache)
 	@rm -f $(CACHE_DIR)/backend-validated
 	@$(MAKE) validate-backend
 
-# Frontend validation with caching
-$(CACHE_DIR)/frontend-validated: $(FRONTEND_SRC) $(FRONTEND_DIR)/tsconfig.json | $(CACHE_DIR)
-	@echo "Frontend files changed, validating..."
-	@cd $(FRONTEND_DIR) && pnpm run type-check 2>/dev/null || \
-	 (echo "TypeScript validation..." && npx vue-tsc --noEmit || true)
-	@touch $(CACHE_DIR)/frontend-validated
+# Frontend linting cache (fast)
+$(CACHE_DIR)/frontend-linted: $(FRONTEND_SRC) $(FRONTEND_CONFIG) | $(CACHE_DIR)
+	@echo "Running ESLint..."
+	@cd $(FRONTEND_DIR) && pnpm run lint || exit 1
+	@touch $(CACHE_DIR)/frontend-linted
 
-validate-frontend: $(CACHE_DIR)/frontend-validated ## Validate TypeScript/Vue syntax (cached)
+# Frontend type checking cache (slow - only check if sources changed)
+$(CACHE_DIR)/frontend-typechecked: $(FRONTEND_SRC) $(FRONTEND_CONFIG) | $(CACHE_DIR)
+	@echo "Running type check (incremental)..."
+	@cd $(FRONTEND_DIR) && pnpm run type-check || exit 1
+	@touch $(CACHE_DIR)/frontend-typechecked
+
+# Frontend formatting check cache (fast)
+$(CACHE_DIR)/frontend-formatted: $(FRONTEND_SRC) $(FRONTEND_CONFIG) | $(CACHE_DIR)
+	@echo "Checking code formatting..."
+	@cd $(FRONTEND_DIR) && pnpm run format:check || exit 1
+	@touch $(CACHE_DIR)/frontend-formatted
+
+# Frontend validation - separate caches for each step
+validate-frontend: $(CACHE_DIR)/frontend-linted $(CACHE_DIR)/frontend-typechecked $(CACHE_DIR)/frontend-formatted ## Validate TypeScript/Vue syntax (cached)
+	@echo "✓ Frontend validation complete"
 
 validate-frontend-force: ## Force frontend validation (ignore cache)
-	@rm -f $(CACHE_DIR)/frontend-validated
+	@rm -f $(CACHE_DIR)/frontend-linted $(CACHE_DIR)/frontend-typechecked $(CACHE_DIR)/frontend-formatted
 	@$(MAKE) validate-frontend
+
+# Quick validation - skip slow type checking
+validate-quick: validate-backend $(CACHE_DIR)/frontend-linted $(CACHE_DIR)/frontend-formatted ## Quick validation (skip type checking)
+	@echo "✓ Quick validation complete (type check skipped)"
 
 validate: validate-backend validate-frontend ## Validate all code (cached)
 
@@ -117,6 +138,7 @@ clean: ## Clean build artifacts
 	@rm -rf $(BUILD_DIR)
 	@rm -rf $(FRONTEND_DIR)/dist
 	@rm -rf $(FRONTEND_DIR)/node_modules/.vite
+	@rm -rf $(FRONTEND_DIR)/node_modules/.cache
 	@rm -rf $(CACHE_DIR)
 	@find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 	@find . -type d -name '*.egg-info' -exec rm -rf {} + 2>/dev/null || true
@@ -150,31 +172,30 @@ lint: ## Run linters
 	@echo "Linting backend..."
 	cd $(BACKEND_DIR) && ruff check .
 	@echo ""
-	@if cd $(FRONTEND_DIR) && pnpm run lint 2>/dev/null; then \
-		echo "✓ Frontend linting passed"; \
-	else \
-		echo "ℹ Frontend linting not configured (skipped)"; \
-	fi
+	@echo "Linting frontend..."
+	cd $(FRONTEND_DIR) && pnpm run lint
 
 lint-fix: ## Fix linting issues
-	cd $(BACKEND_DIR) && ruff check --fix .
+	@echo "Fixing backend linting..."
+	cd $(BACKEND_DIR) && ruff check --fix --unsafe-fixes .
 	cd $(BACKEND_DIR) && ruff format .
 	@echo ""
-	@if cd $(FRONTEND_DIR) && pnpm run lint:fix 2>/dev/null; then \
-		echo "✓ Frontend linting fixed"; \
-	else \
-		echo "ℹ Frontend linting not configured (skipped)"; \
-	fi
+	@echo "Fixing frontend linting..."
+	cd $(FRONTEND_DIR) && pnpm run lint:fix
 
 format: ## Format code
 	@echo "Formatting backend..."
 	cd $(BACKEND_DIR) && ruff format .
 	@echo ""
-	@if cd $(FRONTEND_DIR) && pnpm run format 2>/dev/null; then \
-		echo "✓ Frontend formatted"; \
-	else \
-		echo "ℹ Frontend formatting not configured (skipped)"; \
-	fi
+	@echo "Formatting frontend..."
+	cd $(FRONTEND_DIR) && pnpm run format
+
+format-check: ## Check code formatting
+	@echo "Checking backend formatting..."
+	cd $(BACKEND_DIR) && ruff format --check .
+	@echo ""
+	@echo "Checking frontend formatting..."
+	cd $(FRONTEND_DIR) && pnpm run format:check
 
 dev-frontend: ## Run frontend dev server
 	cd $(FRONTEND_DIR) && pnpm run dev
@@ -298,7 +319,7 @@ $(FRONTEND_DIST): $(FRONTEND_SRC) $(FRONTEND_DIR)/package.json
 	@cd $(FRONTEND_DIR) && pnpm run build:fast
 	@touch $(FRONTEND_DIST)
 
-build-incremental: validate $(FRONTEND_DIST) ## Incremental build (faster, only rebuilds if needed)
+build-incremental: validate-quick $(FRONTEND_DIST) ## Incremental build (faster, skip type check)
 	@echo "Packaging add-on..."
 	@mkdir -p $(BUILD_DIR)
 	@rsync -a \
@@ -316,7 +337,7 @@ build-incremental: validate $(FRONTEND_DIST) ## Incremental build (faster, only 
 	@echo "✓ Add-on packaged to $(BUILD_DIR)/"
 
 # Fast build - skip validation and clean
-build-fast: $(FRONTEND_DIST) ## Fast build (skip validation, incremental)
+build-fast: $(FRONTEND_DIST) ## Fast build (skip all validation, incremental)
 	@echo "Fast packaging add-on..."
 	@mkdir -p $(BUILD_DIR)
 	@rsync -a \
@@ -337,6 +358,9 @@ build-fast: $(FRONTEND_DIST) ## Fast build (skip validation, incremental)
 type-check: ## Run type checking only
 	@echo "Type checking backend..."
 	cd $(BACKEND_DIR) && mypy .
+	@echo ""
+	@echo "Type checking frontend..."
+	cd $(FRONTEND_DIR) && pnpm run type-check
 
 # Add a comprehensive check target
 check: lint type-check test ## Run all checks (lint, type-check, test)
