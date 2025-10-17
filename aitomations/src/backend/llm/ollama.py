@@ -1,5 +1,5 @@
+from .base import LLMProvider
 import requests
-import json
 import logging
 from urllib.parse import urlparse
 from ..api.network import resolve_hostname, test_connection
@@ -7,7 +7,7 @@ from ..api.network import resolve_hostname, test_connection
 logger = logging.getLogger(__name__)
 
 
-class OllamaProvider:
+class OllamaProvider(LLMProvider):
     def generate(self, prompt: str, options: dict) -> dict:
         """Generate text using Ollama."""
         # Get the full API URL from options (includes /api/generate)
