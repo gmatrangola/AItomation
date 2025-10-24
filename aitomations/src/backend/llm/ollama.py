@@ -1,4 +1,6 @@
+import json
 import logging
+from collections.abc import Iterator
 from typing import Any
 from urllib.parse import urlparse
 
@@ -13,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class OllamaProvider(LLMProvider):
     def generate(self, prompt: str, options: dict[str, Any]) -> dict[str, Any]:
-        """Generate text using Ollama."""
+        """Generate text using Ollama (non-streaming)."""
         # Get the full API URL from options (includes /api/generate)
         ollama_api_url = options.get("ollama_api_url", "http://localhost:11434/api/generate")
         model = options.get("ollama_model", "llama3")
@@ -84,7 +86,7 @@ class OllamaProvider(LLMProvider):
         payload = {
             "model": model,
             "prompt": prompt,
-            "stream": False,
+            "stream": False,  # Explicitly non-streaming
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
@@ -210,5 +212,88 @@ class OllamaProvider(LLMProvider):
                 f"**Configuration:** `{base_url}` → `{resolved_base}`\n\n"
                 f"**Technical details:** {str(e)}"
             )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def generate_stream(self, prompt: str, options: dict[str, Any]) -> Iterator[str]:
+        """Generate text using Ollama with streaming."""
+        # Get configuration (same as generate method)
+        ollama_api_url = options.get("ollama_api_url", "http://localhost:11434/api/generate")
+        model = options.get("ollama_model", "llama3")
+        temperature = options.get("temperature", 0.7)
+        max_tokens = options.get("max_tokens", 2048)
+        request_timeout = options.get("request_timeout", 120)
+
+        # Resolve hostname (same as generate method)
+        if "/api/generate" in ollama_api_url:
+            base_url = ollama_api_url.replace("/api/generate", "")
+        else:
+            base_url = ollama_api_url
+            ollama_api_url = f"{base_url}/api/generate"
+
+        try:
+            resolved_base = resolve_hostname(base_url.rstrip("/"))
+            url = f"{resolved_base}/api/generate"
+        except ValueError as e:
+            raise ConnectionError(str(e)) from e
+
+        # Test connection
+        parsed = urlparse(resolved_base)
+        hostname = parsed.hostname or "localhost"
+        port = parsed.port or 11434
+
+        if not test_connection(hostname, port, timeout=3.0):
+            error_msg = (
+                f"❌ Cannot connect to Ollama server\n\n"
+                f"**Server:** `{hostname}:{port}`\n\n"
+                f"Please check your Ollama configuration."
+            )
+            raise ConnectionError(error_msg)
+
+        logger.info(f"Streaming from Ollama at {url} with model {model}")
+
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": True,  # Enable streaming
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+
+        try:
+            response = requests.post(url, json=payload, timeout=request_timeout, stream=True)
+            response.raise_for_status()
+
+            # Stream the response line by line
+            for line in response.iter_lines(decode_unicode=True):
+                if line:
+                    try:
+                        data = json.loads(line)
+                        chunk = data.get("response", "")
+                        if chunk:
+                            yield chunk
+
+                        # Check if done
+                        if data.get("done", False):
+                            logger.info("Ollama streaming complete")
+                            break
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse line: {line}")
+                        continue
+
+        except requests.exceptions.ConnectionError as e:
+            error_msg = f"❌ Connection lost to Ollama server: {str(e)}"
+            logger.error(error_msg)
+            raise ConnectionError(error_msg) from e
+
+        except requests.exceptions.Timeout as e:
+            error_msg = f"⏱️ Request timed out after {request_timeout} seconds"
+            logger.error(error_msg)
+            raise TimeoutError(error_msg) from e
+
+        except requests.exceptions.RequestException as e:
+            error_msg = f"❌ Unexpected network error: {str(e)}"
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e

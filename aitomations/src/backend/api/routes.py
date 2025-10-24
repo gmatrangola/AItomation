@@ -7,7 +7,6 @@ import requests
 import yaml
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
-# These imports were missing from the previous version
 from llm.gemini import GeminiProvider
 from llm.ollama import OllamaProvider
 
@@ -206,7 +205,7 @@ def clear_chat_history():
 
 @api_blueprint.route("/generate_automation/stream", methods=["POST"])
 def generate_automation_stream():
-    """Generate automation with streaming response."""
+    """Generate automation with streaming response via Server-Sent Events."""
     print("[INFO] /api/generate_automation/stream endpoint called")
 
     def generate():
@@ -283,27 +282,24 @@ mode: single
 ```
 """
 
-            print(f"[DEBUG] Full prompt sent to LLM:\n---\n{creation_prompt}\n---")
+            print("[INFO] Starting LLM stream")
 
-            # Generate response from LLM
-            llm_response = llm_provider.generate(creation_prompt, options)
-            full_response = llm_response.get("full_response", "")
+            # Send initial event
+            yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
-            print(f"[INFO] LLM response received, length: {len(full_response)}")
-
-            # Stream the response in chunks
-            chunk_size = 50
-            for i in range(0, len(full_response), chunk_size):
-                chunk = full_response[i : i + chunk_size]
+            # Stream from LLM
+            full_response = ""
+            for chunk in llm_provider.generate_stream(creation_prompt, options):
+                full_response += chunk
                 yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
 
+            # Send completion event with full response
             yield f"data: {json.dumps({'type': 'done', 'full_response': full_response})}\n\n"
             print("[INFO] Streaming complete")
 
         except (ConnectionError, TimeoutError, RuntimeError) as e:
-            # These are our custom errors with formatted messages
             print(f"[ERROR] Error in generate_automation_stream: {e}")
-            error_message = str(e)  # Already formatted with markdown
+            error_message = str(e)
             yield f"data: {json.dumps({'type': 'error', 'error': error_message})}\n\n"
         except Exception as e:
             print(f"[ERROR] Unexpected error in generate_automation_stream: {e}")
@@ -311,7 +307,6 @@ mode: single
 
             traceback.print_exc()
 
-            # Format unexpected errors nicely too
             error_message = (
                 f"❌ An unexpected error occurred\n\n"
                 f"**Error type:** {type(e).__name__}\n\n"
@@ -323,7 +318,11 @@ mode: single
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 
