@@ -1,5 +1,8 @@
 <template>
     <div class="dashboard">
+        <!-- Error Banner - Top Level, Most Prominent -->
+        <ErrorMessage v-if="currentError" :error="currentError" class="error-banner" @close="clearError" />
+
         <!-- Compact Action Bar -->
         <div class="action-bar">
             <v-btn v-if="hasMessages" variant="text" size="small" color="error" @click="handleClearChat">
@@ -22,6 +25,7 @@
                 v-model="prompt"
                 @install-automation="handleInstallAutomation"
                 @has-messages="hasMessages = $event"
+                @error="handleError"
             />
         </div>
 
@@ -95,6 +99,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import AIChat from '@/components/AIChat.vue';
+import ErrorMessage from '@/components/ErrorMessage.vue';
+import type { APIError } from '@/types/errors';
 
 interface Automation {
     id: string;
@@ -113,12 +119,22 @@ const prompt = ref('');
 const showSuccessSnackbar = ref(false);
 const hasMessages = ref(false);
 const chatRef = ref<InstanceType<typeof AIChat> | null>(null);
+const currentError = ref<APIError | null>(null);
+
+const handleError = (error: APIError) => {
+    currentError.value = error;
+};
+
+const clearError = () => {
+    currentError.value = null;
+};
 
 const handleClearChat = async () => {
     if (confirm('Clear chat history?')) {
         if (chatRef.value) {
             await chatRef.value.clearChat();
             prompt.value = '';
+            currentError.value = null; // Clear any errors when clearing chat
         }
     }
 };
@@ -141,10 +157,18 @@ const handleInstallAutomation = async (yaml: string) => {
 
         await fetchAutomations();
         showSuccessSnackbar.value = true;
+        currentError.value = null; // Clear errors on success
         console.log('Automation installed successfully');
     } catch (error) {
         console.error('Failed to install automation:', error);
-        alert(`Failed to install automation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+        // Show structured error instead of alert
+        currentError.value = {
+            error_code: 'UNKNOWN_ERROR',
+            context: {
+                details: error instanceof Error ? error.message : 'Failed to install automation',
+            },
+        };
     }
 };
 
@@ -185,6 +209,11 @@ onMounted(fetchAutomations);
     height: 100vh;
     max-height: 100vh;
     overflow: hidden;
+}
+
+.error-banner {
+    flex-shrink: 0;
+    z-index: 100;
 }
 
 .action-bar {

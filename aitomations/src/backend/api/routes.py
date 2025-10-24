@@ -2,11 +2,13 @@ import json
 import os
 import re
 import time
+import traceback
 
 import requests
 import yaml
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 
+from api.errors import APIError
 from llm.gemini import GeminiProvider
 from llm.ollama import OllamaProvider
 
@@ -214,33 +216,44 @@ def generate_automation_stream():
             prompt = data.get("prompt")
             conversation_history = data.get("conversation_history", [])
 
-            print(f"[INFO] Prompt: {prompt}")
-            print(f"[INFO] Conversation history length: {len(conversation_history)}")
-
             if not prompt:
-                yield f"data: {json.dumps({'type': 'error', 'error': 'No prompt provided'})}\n\n"
+                error_response = {
+                    "type": "error",
+                    "error_code": "INVALID_INPUT",
+                    "context": {"field": "prompt"},
+                }
+                yield f"data: {json.dumps(error_response)}\n\n"
                 return
 
-            # Build full context with conversation history
+            # Build context
             full_context = ""
             if conversation_history:
-                print("[INFO] Building context from conversation history")
                 full_context = "Previous conversation:\n"
-                for i, msg in enumerate(conversation_history):
+                for msg in conversation_history:
                     role = "User" if msg["role"] == "user" else "Assistant"
                     full_context += f"{role}: {msg['content']}\n\n"
-                    print(f"[DEBUG] History message {i}: {role}")
                 full_context += f"User: {prompt}"
             else:
-                print("[INFO] No conversation history, using prompt directly")
                 full_context = prompt
-
-            print(f"[INFO] Full context length: {len(full_context)} characters")
 
             options = get_options()
             llm_provider_name = options.get("llm_provider", "ollama")
-            print(f"[INFO] Using LLM provider: {llm_provider_name}")
-            llm_provider = get_llm_provider(llm_provider_name)
+
+            # Get LLM provider inside try block to catch ValueError from URL parsing
+            try:
+                llm_provider = get_llm_provider(llm_provider_name)
+            except ValueError as e:
+                print(f"[ERROR] Invalid LLM provider configuration: {e}")
+                error_response = {
+                    "type": "error",
+                    "error_code": "INVALID_CONFIG",
+                    "context": {
+                        "details": str(e),
+                        "provider": llm_provider_name,
+                    },
+                }
+                yield f"data: {json.dumps(error_response)}\n\n"
+                return
 
             ha_context, context_summary = _get_ha_context()
 
@@ -282,38 +295,45 @@ mode: single
 ```
 """
 
-            print("[INFO] Starting LLM stream")
-
-            # Send initial event
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
-            # Stream from LLM
             full_response = ""
             for chunk in llm_provider.generate_stream(creation_prompt, options):
                 full_response += chunk
                 yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
 
-            # Send completion event with full response
             yield f"data: {json.dumps({'type': 'done', 'full_response': full_response})}\n\n"
-            print("[INFO] Streaming complete")
 
-        except (ConnectionError, TimeoutError, RuntimeError) as e:
-            print(f"[ERROR] Error in generate_automation_stream: {e}")
-            error_message = str(e)
-            yield f"data: {json.dumps({'type': 'error', 'error': error_message})}\n\n"
+        except APIError as e:
+            # Structured error with error code and context
+            print(f"[ERROR] APIError: {e.code.value} - {e.context}")
+            error_response = {"type": "error", **e.to_dict()}
+            yield f"data: {json.dumps(error_response)}\n\n"
+
+        except ValueError as e:
+            # Handle URL parsing errors and other ValueErrors
+            print(f"[ERROR] ValueError: {e}")
+            error_response = {
+                "type": "error",
+                "error_code": "INVALID_CONFIG",
+                "context": {
+                    "details": str(e),
+                    "provider": options.get("llm_provider", "ollama") if "options" in locals() else "unknown",
+                },
+            }
+            yield f"data: {json.dumps(error_response)}\n\n"
+
         except Exception as e:
-            print(f"[ERROR] Unexpected error in generate_automation_stream: {e}")
-            import traceback
-
+            # Unexpected error
+            print(f"[ERROR] Unexpected error: {e}")
             traceback.print_exc()
 
-            error_message = (
-                f"❌ An unexpected error occurred\n\n"
-                f"**Error type:** {type(e).__name__}\n\n"
-                f"**Details:** {str(e)}\n\n"
-                f"Please check the add-on logs for more information."
-            )
-            yield f"data: {json.dumps({'type': 'error', 'error': error_message})}\n\n"
+            error_response = {
+                "type": "error",
+                "error_code": "UNKNOWN_ERROR",
+                "context": {"details": str(e)},
+            }
+            yield f"data: {json.dumps(error_response)}\n\n"
 
     return Response(
         stream_with_context(generate()),

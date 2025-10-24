@@ -55,9 +55,6 @@
             </template>
         </div>
 
-        <!-- Error Alert (above input) -->
-        <ErrorMessage v-if="currentError" :error="currentError" @close="clearError" />
-
         <!-- Compact Input Area -->
         <div class="chat-input-wrapper">
             <v-divider />
@@ -102,7 +99,7 @@
 import { ref, watch, nextTick } from 'vue';
 import { useChat } from '@/composables/useChat';
 import ChatMessage from './ChatMessage.vue';
-import ErrorMessage from './ErrorMessage.vue';
+import type { APIError } from '@/types/errors';
 
 const { messages, isGenerating, latestYaml, streamingMessage, currentError, sendMessage, clearChat, clearError } =
     useChat();
@@ -119,6 +116,7 @@ const emit = defineEmits<{
     'install-automation': [yaml: string];
     'update:modelValue': [value: string];
     'has-messages': [hasMessages: boolean];
+    error: [error: APIError];
 }>();
 
 const internalPrompt = ref(props.modelValue);
@@ -133,6 +131,18 @@ watch(
         emit('has-messages', newMessages.length > 0);
     },
     { immediate: true, deep: true }
+);
+
+// Watch for errors and emit to parent
+watch(
+    currentError,
+    (error) => {
+        if (error) {
+            emit('error', error);
+            clearError(); // Clear from composable since Dashboard manages it now
+        }
+    },
+    { immediate: true }
 );
 
 // Watch for external prompt changes
@@ -166,11 +176,6 @@ const handleSend = async () => {
     const prompt = internalPrompt.value.trim();
     internalPrompt.value = '';
     await sendMessage(prompt);
-
-    // If there was an error, restore the prompt so user can try again
-    if (currentError.value) {
-        internalPrompt.value = prompt;
-    }
 };
 
 const handleNewLine = () => {

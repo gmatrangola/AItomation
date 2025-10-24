@@ -5,6 +5,8 @@ from typing import Any
 
 import google.generativeai as genai
 
+from api.errors import APIError, ErrorCode
+
 from .base import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -17,20 +19,25 @@ class GeminiProvider(LLMProvider):
         model_name = options.get("gemini_model", "gemini-1.5-flash")
 
         if not api_key:
-            raise ValueError("Gemini API key not configured.")
+            raise APIError(ErrorCode.INVALID_API_KEY, {"provider": "gemini"})
 
-        genai.configure(api_key=api_key)
-        logger.info(f"Calling Gemini with model {model_name}")
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
 
-        model = genai.GenerativeModel(model_name)
-        response = model.generate_content(prompt)
-        full_response_text = response.text
+            return {
+                "full_response": response.text,
+                "model": model_name,
+                "provider": "gemini",
+            }
 
-        return {
-            "full_response": full_response_text,
-            "model": model_name,
-            "provider": "gemini",
-        }
+        except Exception as e:
+            logger.error(f"Gemini error: {e}")
+            raise APIError(
+                ErrorCode.LLM_ERROR,
+                {"provider": "gemini", "model": model_name, "details": str(e)},
+            ) from e
 
     def generate_stream(self, prompt: str, options: dict[str, Any]) -> Iterator[str]:
         """Generate text using Gemini with streaming."""
@@ -38,23 +45,20 @@ class GeminiProvider(LLMProvider):
         model_name = options.get("gemini_model", "gemini-1.5-flash")
 
         if not api_key:
-            raise ValueError("Gemini API key not configured.")
-
-        genai.configure(api_key=api_key)
-        logger.info(f"Streaming from Gemini with model {model_name}")
-
-        model = genai.GenerativeModel(model_name)
+            raise APIError(ErrorCode.INVALID_API_KEY, {"provider": "gemini"})
 
         try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt, stream=True)
 
             for chunk in response:
                 if chunk.text:
                     yield chunk.text
 
-            logger.info("Gemini streaming complete")
-
         except Exception as e:
-            error_msg = f"❌ Gemini streaming error: {str(e)}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg) from e
+            logger.error(f"Gemini streaming error: {e}")
+            raise APIError(
+                ErrorCode.LLM_ERROR,
+                {"provider": "gemini", "model": model_name, "details": str(e)},
+            ) from e

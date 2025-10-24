@@ -1,10 +1,6 @@
 import type { ChatMessage } from '@/types/chat';
+import type { APIError } from '@/types/errors';
 import { v4 as uuidv4 } from 'uuid';
-
-interface ErrorResponse {
-    error?: string;
-    detail?: string;
-}
 
 export class ChatService {
     /**
@@ -18,10 +14,8 @@ export class ChatService {
         prompt: string,
         conversationHistory: ChatMessage[] = [],
         onChunk: (text: string) => void
-    ): Promise<{ message: ChatMessage; error?: string }> {
-        console.log('[ChatService] sendMessageStream called');
-        console.log('[ChatService] Prompt:', prompt);
-        console.log('[ChatService] History length:', conversationHistory.length);
+    ): Promise<{ message: ChatMessage; error?: APIError }> {
+        console.log('[ChatService] sendMessageStream called with prompt:', prompt);
 
         try {
             const requestBody = {
@@ -32,7 +26,7 @@ export class ChatService {
                 })),
             };
 
-            console.log('[ChatService] Fetching stream from api/generate_automation/stream');
+            console.log('[ChatService] Sending request to:', 'api/generate_automation/stream');
 
             const response = await fetch('api/generate_automation/stream', {
                 method: 'POST',
@@ -40,93 +34,127 @@ export class ChatService {
                 body: JSON.stringify(requestBody),
             });
 
-            console.log('[ChatService] Stream response status:', response.status);
+            console.log('[ChatService] Response status:', response.status, response.ok);
 
             if (!response.ok) {
-                let errorData: ErrorResponse;
+                // Try to get structured error
                 try {
-                    errorData = await response.json();
-                } catch {
-                    errorData = { error: `HTTP ${response.status}: ${response.statusText}` };
+                    const errorData = await response.json();
+                    console.error('[ChatService] Non-OK response with error data:', errorData);
+                    throw errorData;
+                } catch (e) {
+                    // Fallback to generic error
+                    console.error('[ChatService] Non-OK response, fallback error', e);
+                    throw {
+                        error_code: 'NETWORK_ERROR',
+                        context: { status_code: response.status },
+                    };
                 }
-                console.error('[ChatService] Error response:', errorData);
-
-                // Return the raw error - let ErrorMessage component format it
-                const errorMessage = errorData.error || errorData.detail || `Server returned error: ${response.status}`;
-
-                throw new Error(errorMessage);
             }
 
-            // Read the stream
             const reader = response.body?.getReader();
             const decoder = new TextDecoder();
             let fullResponse = '';
 
             if (!reader) {
-                throw new Error('No response body reader available');
+                throw {
+                    error_code: 'NETWORK_ERROR',
+                    context: { details: 'No response body reader' },
+                };
             }
+
+            console.log('[ChatService] Starting SSE stream reading...');
 
             while (true) {
                 const { done, value } = await reader.read();
-
                 if (done) {
                     console.log('[ChatService] Stream complete');
                     break;
                 }
 
-                // Decode the chunk
                 const chunk = decoder.decode(value, { stream: true });
                 const lines = chunk.split('\n');
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         try {
-                            const data = JSON.parse(line.slice(6));
+                            const jsonStr = line.slice(6);
+                            console.log('[ChatService] Parsing SSE line:', jsonStr);
+                            const data = JSON.parse(jsonStr);
+                            console.log('[ChatService] SSE data parsed:', data);
 
                             if (data.type === 'content') {
                                 fullResponse += data.text;
                                 onChunk(data.text);
                             } else if (data.type === 'done') {
                                 fullResponse = data.full_response;
-                                console.log('[ChatService] Received done signal');
+                                console.log('[ChatService] Received done event');
                             } else if (data.type === 'error') {
-                                throw new Error(data.error);
+                                // Structured error from backend
+                                console.error('[ChatService] ❌ ERROR EVENT from backend:', data);
+                                throw {
+                                    error_code: data.error_code,
+                                    context: data.context,
+                                };
+                            } else if (data.type === 'start') {
+                                console.log('[ChatService] Received start event');
                             }
                         } catch (e) {
-                            if (e instanceof Error && e.message !== 'Unexpected end of JSON input') {
-                                console.error('[ChatService] Error parsing SSE data:', e);
+                            // Only log non-JSON parsing errors
+                            if (e instanceof SyntaxError) {
+                                console.warn('[ChatService] JSON parse error (likely incomplete chunk):', e.message);
+                                continue;
                             }
+                            // Re-throw structured errors
+                            console.error('[ChatService] Re-throwing error:', e);
+                            throw e;
                         }
                     }
                 }
             }
 
-            const message: ChatMessage = {
-                id: uuidv4(),
-                role: 'assistant',
-                content: fullResponse || 'No response received',
-                timestamp: new Date(),
-                yaml: this.extractYamlFromMarkdown(fullResponse || ''),
-            };
-
-            console.log('[ChatService] Created message:', message);
-            console.log('[ChatService] Extracted YAML:', message.yaml ? 'Yes' : 'No');
-
-            return { message };
-        } catch (error) {
-            console.error('[ChatService] Exception caught:', error);
-
-            // Return raw error message - ErrorMessage component will format it
-            const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-
             return {
                 message: {
                     id: uuidv4(),
                     role: 'assistant',
-                    content: errorMessage,
+                    content: fullResponse || 'No response received',
+                    timestamp: new Date(),
+                    yaml: this.extractYamlFromMarkdown(fullResponse || ''),
+                },
+            };
+        } catch (error) {
+            console.error('[ChatService] ❌ CAUGHT ERROR:', error);
+
+            // Check if it's a structured error
+            const apiError = error as APIError;
+            if (apiError.error_code) {
+                console.log('[ChatService] Returning structured error:', apiError);
+                return {
+                    message: {
+                        id: uuidv4(),
+                        role: 'assistant',
+                        content: '',
+                        timestamp: new Date(),
+                    },
+                    error: apiError,
+                };
+            }
+
+            // Fallback for unexpected errors
+            console.log('[ChatService] Returning fallback error');
+            return {
+                message: {
+                    id: uuidv4(),
+                    role: 'assistant',
+                    content: '',
                     timestamp: new Date(),
                 },
-                error: errorMessage,
+                error: {
+                    error_code: 'UNKNOWN_ERROR',
+                    context: {
+                        details: error instanceof Error ? error.message : 'Unknown error',
+                    },
+                },
             };
         }
     }
@@ -134,8 +162,6 @@ export class ChatService {
     private extractYamlFromMarkdown(markdown: string): string | undefined {
         if (!markdown) return undefined;
         const match = markdown.match(/```yaml\n([\s\S]*?)\n```/);
-        const yaml = match ? match[1].trim() : undefined;
-        console.log('[ChatService] YAML extraction:', yaml ? 'Found' : 'Not found');
-        return yaml;
+        return match ? match[1].trim() : undefined;
     }
 }
