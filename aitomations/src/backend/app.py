@@ -6,69 +6,57 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 # +++ ENSURE PROPER PYTHON PATH +++
-# Add the application root to Python path
 app_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 if app_root not in sys.path:
     sys.path.insert(0, app_root)
-print(f"[STARTUP] Python path: {sys.path}")
-print(f"[STARTUP] Current working directory: {os.getcwd()}")
-print(f"[STARTUP] __file__ is: {__file__}")
 
-# +++ START DIAGNOSTIC LOGGING +++
-log_file = "/data/aitomations_startup.log"
-if os.path.exists(log_file):
-    os.remove(log_file)
+# +++ CREATE FLASK APP FIRST (so app.logger is available) +++
+app = Flask(__name__, static_folder="dist", static_url_path="/")
+CORS(app)
 
-logging.basicConfig(filename=log_file, level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
-logging.info("=== app.py module execution started ===")
-logging.info(f"Python path: {sys.path}")
-logging.info(f"Working directory: {os.getcwd()}")
-logging.info(f"__file__: {__file__}")
-# +++ END DIAGNOSTIC LOGGING +++
+# Set log level for the Flask app logger (used by Gunicorn)
+app.logger.setLevel(logging.DEBUG)
 
-# Import the routes module - try multiple strategies at runtime
+app.logger.info("=== app.py module execution started ===")
+app.logger.info(f"Python path: {sys.path}")
+app.logger.info(f"Working directory: {os.getcwd()}")
+app.logger.info(f"__file__: {__file__}")
+
+# Import the routes module
 api_blueprint: object | None = None
 
-# Add backend directory to path first
 backend_dir = os.path.dirname(__file__)
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-# Now try importing
 try:
     from api.routes import api_blueprint  # type: ignore[import-not-found]
 
-    logging.info("✓ SUCCESS: Imported api_blueprint")
+    app.logger.info("✓ SUCCESS: Imported api_blueprint")
 except ImportError as e:
-    logging.error(f"✗ FAILED to import api_blueprint: {e}", exc_info=True)
-    logging.error("Routes will NOT be available!")
-
-# --- Application Setup ---
-app = Flask(__name__, static_folder="dist", static_url_path="/")
-CORS(app)
-logging.info("Flask app object created")
+    app.logger.error(f"✗ FAILED to import api_blueprint: {e}", exc_info=True)
+    app.logger.error("Routes will NOT be available!")
 
 # Register the API blueprint
 if api_blueprint:
     try:
         app.register_blueprint(api_blueprint, url_prefix="/api")  # type: ignore[arg-type]
-        logging.info("✓ API blueprint registered successfully with url_prefix='/api'")
+        app.logger.info("✓ API blueprint registered successfully with url_prefix='/api'")
 
         # Log all registered routes
-        logging.info("Registered routes:")
+        app.logger.info("Registered routes:")
         for rule in app.url_map.iter_rules():
             methods = ",".join(sorted(rule.methods - {"HEAD", "OPTIONS"}))
-            logging.info(f"  [{methods}] {rule.rule} -> {rule.endpoint}")
+            app.logger.info(f"  [{methods}] {rule.rule} -> {rule.endpoint}")
 
-        # Count API routes
         api_routes = [r for r in app.url_map.iter_rules() if r.rule.startswith("/api/")]
-        logging.info(f"Total API routes registered: {len(api_routes)}")
+        app.logger.info(f"Total API routes registered: {len(api_routes)}")
 
     except Exception as e:
-        logging.error(f"✗ FAILED to register blueprint: {e}", exc_info=True)
+        app.logger.error(f"✗ FAILED to register blueprint: {e}", exc_info=True)
 else:
-    logging.error("✗ CRITICAL: api_blueprint is None! Routes NOT registered!")
-    logging.error("The application will start but API endpoints will not work.")
+    app.logger.error("✗ CRITICAL: api_blueprint is None! Routes NOT registered!")
+    app.logger.error("The application will start but API endpoints will not work.")
 
 
 # --- Debug Routes ---
@@ -98,16 +86,6 @@ def debug_routes():
             "routes": sorted(routes_list, key=lambda x: x["path"]),
         }
     )
-
-
-@app.route("/debug/startup-log")
-def debug_startup_log():
-    """View the startup log."""
-    try:
-        with open("/data/aitomations_startup.log") as f:
-            return f.read(), 200, {"Content-Type": "text/plain"}
-    except FileNotFoundError:
-        return "Startup log not found", 404
 
 
 @app.route("/", defaults={"path": ""})

@@ -6,7 +6,7 @@ import traceback
 
 import requests
 import yaml
-from flask import Blueprint, Response, jsonify, request, stream_with_context
+from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
 from api.errors import APIError
 from llm.gemini import GeminiProvider
@@ -125,7 +125,7 @@ def get_automations():
             processed_automations.append(item)
         return jsonify(processed_automations)
     except Exception as e:
-        print(f"[ERROR] An unexpected error occurred in get_automations: {e}")
+        current_app.logger.error(f" An unexpected error occurred in get_automations: {e}")
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 
@@ -133,12 +133,12 @@ def get_automations():
 @api_blueprint.route("/chat/history", methods=["GET"])
 def get_chat_history():
     """Get persisted chat history from Home Assistant storage."""
-    print("[INFO] get_chat_history called")
+    current_app.logger.info(" get_chat_history called")
     try:
         storage_path = "/data/chat_history.json"
 
         if not os.path.exists(storage_path):
-            print("[INFO] No chat history found")
+            current_app.logger.info(" No chat history found")
             return jsonify({"messages": []})
 
         with open(storage_path) as f:
@@ -149,28 +149,28 @@ def get_chat_history():
         age_days = (time.time() - timestamp) / (60 * 60 * 24)
 
         if age_days > 7:
-            print(f"[INFO] Chat history is {age_days:.1f} days old, clearing")
+            current_app.logger.info(f" Chat history is {age_days:.1f} days old, clearing")
             os.remove(storage_path)
             return jsonify({"messages": []})
 
         messages = data.get("messages", [])
-        print(f"[INFO] Loaded {len(messages)} messages from storage")
+        current_app.logger.info(f" Loaded {len(messages)} messages from storage")
 
         return jsonify({"messages": messages})
     except Exception as e:
-        print(f"[ERROR] Error loading chat history: {e}")
+        current_app.logger.error(f" Error loading chat history: {e}")
         return jsonify({"messages": [], "error": str(e)}), 500
 
 
 @api_blueprint.route("/chat/history", methods=["POST"])
 def save_chat_history():
     """Save chat history to Home Assistant storage."""
-    print("[INFO] save_chat_history called")
+    current_app.logger.info(" save_chat_history called")
     try:
         data = request.get_json()
         messages = data.get("messages", [])
 
-        print(f"[INFO] Saving {len(messages)} messages to storage")
+        current_app.logger.info(f" Saving {len(messages)} messages to storage")
 
         storage_path = "/data/chat_history.json"
         storage_data = {"messages": messages, "timestamp": time.time()}
@@ -181,40 +181,46 @@ def save_chat_history():
         with open(storage_path, "w") as f:
             json.dump(storage_data, f, indent=2)
 
-        print("[INFO] Chat history saved successfully")
+        current_app.logger.info(" Chat history saved successfully")
         return jsonify({"success": True})
     except Exception as e:
-        print(f"[ERROR] Error saving chat history: {e}")
+        current_app.logger.error(f" Error saving chat history: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 @api_blueprint.route("/chat/history", methods=["DELETE"])
 def clear_chat_history():
     """Clear persisted chat history."""
-    print("[INFO] clear_chat_history called")
+    current_app.logger.info(" clear_chat_history called")
     try:
         storage_path = "/data/chat_history.json"
 
         if os.path.exists(storage_path):
             os.remove(storage_path)
-            print("[INFO] Chat history cleared")
+            current_app.logger.info(" Chat history cleared")
 
         return jsonify({"success": True})
     except Exception as e:
-        print(f"[ERROR] Error clearing chat history: {e}")
+        current_app.logger.error(f" Error clearing chat history: {e}")
         return jsonify({"error": str(e)}), 500
 
 
 @api_blueprint.route("/generate_automation/stream", methods=["POST"])
 def generate_automation_stream():
     """Generate automation with streaming response via Server-Sent Events."""
-    print("[INFO] /api/generate_automation/stream endpoint called")
+    current_app.logger.info("/api/generate_automation/stream endpoint called")
 
     def generate():
         try:
+            yield ": connected\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'initializing_context'})}\n\n"
             data = request.get_json()
+            current_app.logger.info("read request json data")
+
             prompt = data.get("prompt")
+            current_app.logger.info(f"got prompt {prompt}")
             conversation_history = data.get("conversation_history", [])
+            current_app.logger.info(f"got conversation history with {len(conversation_history)} messages")
 
             if not prompt:
                 error_response = {
@@ -243,7 +249,7 @@ def generate_automation_stream():
             try:
                 llm_provider = get_llm_provider(llm_provider_name)
             except ValueError as e:
-                print(f"[ERROR] Invalid LLM provider configuration: {e}")
+                current_app.logger.error(f" Invalid LLM provider configuration: {e}")
                 error_response = {
                     "type": "error",
                     "error_code": "INVALID_CONFIG",
@@ -255,7 +261,23 @@ def generate_automation_stream():
                 yield f"data: {json.dumps(error_response)}\n\n"
                 return
 
+            # Send initial progress - gathering context
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'gathering_context'})}\n\n"
+
             ha_context, context_summary = _get_ha_context()
+
+            # Send context statistics
+            context_stats = {
+                "type": "progress",
+                "stage": "context_ready",
+                "stats": {
+                    "entities": len(ha_context.get("entities", [])),
+                    "services": len(ha_context.get("services", [])),
+                    "automations": len(ha_context.get("automations", [])),
+                    "prompt_length": len(full_context),
+                },
+            }
+            yield f"data: {json.dumps(context_stats)}\n\n"
 
             creation_prompt = f"""You are an expert Home Assistant automation assistant. Your goal is to generate a single, complete YAML configuration for an automation based on the user's request and the provided context.
 
@@ -295,24 +317,37 @@ mode: single
 ```
 """
 
+            # Send generating stage
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'generating', 'provider': llm_provider_name})}\n\n"
+
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
 
             full_response = ""
+            chunk_count = 0
             for chunk in llm_provider.generate_stream(creation_prompt, options):
                 full_response += chunk
-                yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
+                chunk_count += 1
+
+                # Send content with progress metadata every 10 chunks
+                if chunk_count % 10 == 0:
+                    yield f"data: {json.dumps({'type': 'content', 'text': chunk, 'chunks_received': chunk_count})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
+
+            # Send completion progress
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'complete', 'total_chunks': chunk_count, 'response_length': len(full_response)})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done', 'full_response': full_response})}\n\n"
 
         except APIError as e:
             # Structured error with error code and context
-            print(f"[ERROR] APIError: {e.code.value} - {e.context}")
+            current_app.logger.error(f" APIError: {e.code.value} - {e.context}")
             error_response = {"type": "error", **e.to_dict()}
             yield f"data: {json.dumps(error_response)}\n\n"
 
         except ValueError as e:
             # Handle URL parsing errors and other ValueErrors
-            print(f"[ERROR] ValueError: {e}")
+            current_app.logger.error(f" ValueError: {e}")
             error_response = {
                 "type": "error",
                 "error_code": "INVALID_CONFIG",
@@ -325,7 +360,7 @@ mode: single
 
         except Exception as e:
             # Unexpected error
-            print(f"[ERROR] Unexpected error: {e}")
+            current_app.logger.error(f" Unexpected error: {e}")
             traceback.print_exc()
 
             error_response = {
@@ -348,7 +383,7 @@ mode: single
 
 @api_blueprint.route("/generate_automation", methods=["POST"])
 def generate_automation():
-    print("[INFO] /api/generate_automation endpoint called.")
+    current_app.logger.info(" /api/generate_automation endpoint called.")
     try:
         data = request.get_json()
         prompt = data.get("prompt")
@@ -357,7 +392,7 @@ def generate_automation():
 
         options = get_options()
         llm_provider_name = options.get("llm_provider", "ollama")
-        print(f"[INFO] Using LLM provider: {llm_provider_name}")
+        current_app.logger.info(f" Using LLM provider: {llm_provider_name}")
         llm_provider = get_llm_provider(llm_provider_name)
 
         ha_context, context_summary = _get_ha_context()
@@ -399,14 +434,14 @@ action:
 mode: single
 ```
 """
-        print(f"[DEBUG] Full prompt sent to LLM:\n---\n{creation_prompt}\n---")
+        current_app.logger.debug(f" Full prompt sent to LLM:\n---\n{creation_prompt}\n---")
 
         llm_response = llm_provider.generate(creation_prompt, options)
         llm_response["context_summary"] = context_summary
         llm_response["prompt"] = prompt
         return jsonify(llm_response)
     except Exception as e:
-        print(f"[ERROR] An exception occurred in generate_automation: {str(e)}")
+        current_app.logger.error(f" An exception occurred in generate_automation: {str(e)}")
         import traceback
 
         traceback.print_exc()
@@ -458,14 +493,14 @@ def edit_automation():
 ```
 """
 
-        print(f"[DEBUG] Full prompt sent to LLM for editing:\n---\n{edit_prompt}\n---")
+        current_app.logger.debug(f" Full prompt sent to LLM for editing:\n---\n{edit_prompt}\n---")
 
         llm_response = llm_provider.generate(edit_prompt, options)
         llm_response["context_summary"] = context_summary
         llm_response["prompt"] = data["prompt"]
         return jsonify(llm_response)
     except Exception as e:
-        print(f"[ERROR] Error in edit_automation: {str(e)}")
+        current_app.logger.error(f" Error in edit_automation: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -503,5 +538,5 @@ def install_automation():
 
         return jsonify(response.json())
     except Exception as e:
-        print(f"[ERROR] Error in install_automation: {str(e)}")
+        current_app.logger.error(f" Error in install_automation: {str(e)}")
         return jsonify({"error": str(e)}), 500

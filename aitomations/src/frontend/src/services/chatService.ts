@@ -2,18 +2,34 @@ import type { ChatMessage } from '@/types/chat';
 import type { APIError } from '@/types/errors';
 import { v4 as uuidv4 } from 'uuid';
 
+export interface ProgressEvent {
+    stage: 'initializing_context' | 'gathering_context' | 'context_ready' | 'generating' | 'complete';
+    stats?: {
+        entities: number;
+        services: number;
+        automations: number;
+        prompt_length: number;
+    };
+    provider?: string;
+    chunks_received?: number;
+    total_chunks?: number;
+    response_length?: number;
+}
+
 export class ChatService {
     /**
      * Send message with streaming response
      * @param prompt User's message
      * @param conversationHistory Previous messages
      * @param onChunk Callback for each chunk of text
+     * @param onProgress Callback for progress updates
      * @returns Complete message with extracted YAML
      */
     async sendMessageStream(
         prompt: string,
         conversationHistory: ChatMessage[] = [],
-        onChunk: (text: string) => void
+        onChunk: (text: string) => void,
+        onProgress?: (progress: ProgressEvent) => void
     ): Promise<{ message: ChatMessage; error?: APIError }> {
         console.log('[ChatService] sendMessageStream called with prompt:', prompt);
 
@@ -96,6 +112,19 @@ export class ChatService {
                                     error_code: data.error_code,
                                     context: data.context,
                                 };
+                            } else if (data.type === 'progress') {
+                                // Progress update
+                                console.log('[ChatService] Progress update:', data);
+                                if (onProgress) {
+                                    onProgress({
+                                        stage: data.stage,
+                                        stats: data.stats,
+                                        provider: data.provider,
+                                        chunks_received: data.chunks_received,
+                                        total_chunks: data.total_chunks,
+                                        response_length: data.response_length,
+                                    });
+                                }
                             } else if (data.type === 'start') {
                                 console.log('[ChatService] Received start event');
                             }
