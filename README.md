@@ -1,59 +1,60 @@
-# **AItomations - Home Assistant LLM Automation Creator**
+# AItomations - Home Assistant Automation Creator
 
-A Home Assistant add-on that allows you to create automations by describing what you want in plain English. It uses a Large Language Model (LLM) like Google's Gemini or a local Ollama instance to generate the automation's YAML configuration.
+Create Home Assistant automations using natural language! Describe what you want in plain English, and AItomations uses AI (Google Gemini or local Ollama) to generate the YAML configuration for you.
 
-This is the source code for my Home Assistant Addon. The backend for interfacing with the Home Assistant API and the Large Language Models which is written in Python. There is a front-end for the web-interface written Vue 3 + Vuetify + TypeScript. It contains a deployment script that builds both sides, packages up the artifacts and uses rsync to send them to my Test Home Assistant Instance. On my Test Home Assistant instance, I have several entities configured that I can use to test. I set up the addon through Home Assistant's user interface
+This is the repository for the source code for the AITomations Home Assistant Add On. If you are looking to install and use the add on please go to [The installation repo](https://github.com/gmatrangola/aitomation-install)
 
-## **Table of Contents**
+The following information is for my reference and future contributors to the project. It might also serve as an example for efficently building Home Assistant Add Ons with a user interface and back end.
 
-* [Features](https://www.google.com/search?q=%23features)  
-* [Prerequisites](https://www.google.com/search?q=%23prerequisites)  
-* [Development Setup](https://www.google.com/search?q=%23development-setup)  
-* [Running in Development Mode](https://www.google.com/search?q=%23running-in-development-mode)  
-  * [1. Run the Backend (Python)](https://www.google.com/search?q=%231-run-the-backend-python)  
-  * [2. Run the Frontend (Vue)](https://www.google.com/search?q=%232-run-the-frontend-vue)  
-  * [3. Access the App](https://www.google.com/search?q=%233-access-the-app)  
-* [Debugging in VS Code](https://www.google.com/search?q=%23debugging-in-vs-code)  
-  * [1. Create a launch.json File](https://www.google.com/search?q=%231-create-a-launchjson-file)  
-  * [2. Start a Debug Session](https://www.google.com/search?q=%232-start-a-debug-session)  
-* [Testing in Home Assistant](https://www.google.com/search?q=%23testing-in-home-assistant)  
-  * [1. Access Home Assistant's Filesystem](https://www.google.com/search?q=%231-access-home-assistants-filesystem)  
-  * [2. Copy the Add-on](https://www.google.com/search?q=%232-copy-the-add-on)  
-  * [3. Install and Configure the Add-on](https://www.google.com/search?q=%233-install-and-configure-the-add-on)  
-* [Project Structure](https://www.google.com/search?q=%23project-structure)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## **Features**
+## ✨ Features
 
-* **Natural Language Automation:** Simply describe the automation you want.  
-* **LLM Integration:** Supports both cloud-based (Gemini) and local (Ollama) language models.  
-* **Context-Aware:** Fetches your Home Assistant entities to provide the LLM with relevant context.  
-* **Review and Install:** Review the generated YAML and summary before installing.  
-* **Seamless UI:** A clean, modern interface built with Vue 3 and Vuetify that integrates with Home Assistant via Ingress.
+* **Natural Language Automation** - Just describe what you want in plain English
+* **Multiple LLM Providers** - Use Google Gemini (cloud) or Ollama (local)
+* **Context-Aware** - Automatically fetches your Home Assistant entities for accurate suggestions
+* **Conversational Interface** - Chat with the AI to refine your automation
+* **Real-time Streaming** - See the AI's response as it's generated
+* **Review Before Install** - Preview the YAML and explanation before installing
+* **Modern UI** - Clean interface built with Vue 3 and Vuetify
 
-## **Prerequisites**
+## 📋 Table of Contents
 
-Before you begin, ensure you have the following installed on your system:
+* [Prerequisites](#prerequisites)
+* [Development Setup](#development-setup)
+* [Running in Development Mode](#running-in-development-mode)
+* [Debugging in VS Code](#debugging-in-vs-code)
+* [Testing in Home Assistant](#testing-in-home-assistant)
+* [Building and Deploying](#building-and-deploying)
+* [Project Structure](#project-structure)
+* [Contributing](#contributing)
+* [License](#license)
 
-1. **Visual Studio Code:** The primary editor for this project.  
-2. **Docker Desktop:** Required for running VS Code's Dev Containers feature.  
-3. **VS Code Dev Containers Extension:** The extension that makes this whole process seamless.
+## 🔧 Prerequisites
 
-## **Development Setup**
+Before you begin, ensure you have:
 
-The project is configured to run inside a self-contained Dev Container, which includes Python, Node.js, and all necessary tools.
+1. **Visual Studio Code** - The primary editor for this project
+2. **Docker Desktop** - Required for VS Code Dev Containers
+3. **VS Code Dev Containers Extension** - For the development environment
 
-1. **Clone the Repository:**  
-   git clone [https://github.com/your-username/your-addon-repo.git](https://github.com/your-username/your-addon-repo.git)  
-   cd your-addon-repo
+## 🚀 Development Setup
 
-2. **Open in Dev Container:**  
-   * Open the project folder in VS Code.  
-   * A notification will pop up asking if you want to "Reopen in Container". Click it.  
-   * VS Code will now build the Docker image and configure the development environment. This may take a few minutes on the first run.
+This project uses VS Code Dev Containers for a consistent development environment with all tools pre-installed.
 
-The postCreateCommand in .devcontainer/devcontainer.json will automatically install all Python and Node.js dependencies for you.
+### 1. Clone and Open
 
-To validate your code before committing:
+```bash
+git clone https://github.com/gmatrangola/aitomations.git
+cd aitomations
+```
+
+Open the folder in VS Code. When prompted, click **"Reopen in Container"**. The first build may take a few minutes.
+
+### 2. Validate Your Setup
+
+The dev container automatically installs all dependencies. To validate everything is working:
 
 ```bash
 # Quick validation (uses cache)
@@ -65,222 +66,271 @@ make validate-force
 # Run linter only
 make lint
 
-# Fix linting issues automatically
+# Fix linting issues
 make lint-fix
 
-# Run type checking only
+# Run type checking
 make type-check
-
-# Run all checks
-make check
 ```
 
-## **Running in Development Mode**
+## 💻 Running in Development Mode
 
-To work on the application locally, you need to run the Python backend and the Vue frontend simultaneously in separate terminals.
+Run the backend and frontend simultaneously in separate terminals.
 
-### **1. Run the Backend (Python)**
+### Backend (Python/Flask)
 
-The backend is a Flask server that handles API requests.
+```bash
+python aitomations/src/backend/app.py
+```
 
-* Open a new terminal in VS Code (Terminal -> New Terminal).  
-* Start the Flask server:  
-  python add-on/src/backend/app.py
+The server starts at `http://localhost:8099`
 
-* The server will start on http://localhost:8099. You will see output indicating that the server is running.
+### Frontend (Vue/Vite)
 
-### **2. Run the Frontend (Vue)**
+```bash
+cd aitomations/src/frontend
+pnpm run dev
+```
 
-The frontend is a Vue 3 application served by Vite's dev server.
+The dev server starts at `http://localhost:5173`
 
-* Open a **second** terminal in VS Code by clicking the + icon in the terminal panel.  
-* Navigate to the frontend directory and start the dev server:  
-  cd add-on/src/frontend  
-  pnpm run dev
+### Access the App
 
-* The Vite server will start on http://localhost:5173.
+Open `http://localhost:5173` in your browser. The Vite dev server automatically proxies API calls to the backend.
 
-### **3. Access the App**
+## 🐛 Debugging in VS Code
 
-* Open your web browser and navigate to **http://localhost:5173**.  
-* You should see the AItomations UI. The vite.config.ts file is configured to automatically proxy any API calls (e.g., to /api/generate_automation) from the frontend to the backend Flask server running on port 8099.
+Debug both backend and frontend simultaneously with full breakpoint support.
 
-## **Debugging in VS Code**
+### Setup Debug Configuration
 
-You can debug both the Python backend and the Vue frontend simultaneously using VS Code's debugger.
+Create `.vscode/launch.json`:
 
-### **1. Create a launch.json File**
-
-First, you need to configure the debugger.
-
-1. Go to the **Run and Debug** panel on the left-hand sidebar (or press Ctrl+Shift+D).  
-2. Click the link that says "**create a launch.json file**".  
-3. Select **Python** from the first dropdown, and then **Flask** from the second.  
-4. VS Code will generate a basic launch.json file. **Replace its entire contents** with the configuration below. This config sets up debugging for both Python/Flask and the JavaScript in your Vue app.
-
-.vscode/launch.json:
-
-{  
-    "version": "0.2.0",  
-    "configurations": [  
-        {  
-            "name": "Python: Flask",  
-            "type": "debugpy",  
-            "request": "launch",  
-            "module": "flask",  
-            "env": {  
-                "FLASK_APP": "add-on/src/backend/app.py",  
-                "FLASK_DEBUG": "1"  
-            },  
-            "args": [  
-                "run",  
-                "--no-debugger",  
-                "--no-reload",  
-                "--port=8099"  
-            ],  
-            "jinja": true,  
-            "justMyCode": true  
-        },  
-        {  
-            "name": "Frontend: Debug in Edge",  
-            "type": "msedge",  
-            "request": "launch",  
-            "url": "http://localhost:5173",  
-            "webRoot": "${workspaceFolder}/add-on/src/frontend"  
-        },  
-        {  
-            "name": "Frontend: Debug in Chrome",  
-            "type": "chrome",  
-            "request": "launch",  
-            "url": "http://localhost:5173",  
-            "webRoot": "${workspaceFolder}/add-on/src/frontend"  
-        }  
-    ],  
-    "compounds": [  
-        {  
-            "name": "Debug Backend & Frontend (Edge)",  
-            "configurations": ["Python: Flask", "Frontend: Debug in Edge"]  
-        },  
-        {  
-            "name": "Debug Backend & Frontend (Chrome)",  
-            "configurations": ["Python: Flask", "Frontend: Debug in Chrome"]  
-        }  
-    ]  
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Flask",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "flask",
+            "env": {
+                "FLASK_APP": "aitomations/src/backend/app.py",
+                "FLASK_DEBUG": "1"
+            },
+            "args": [
+                "run",
+                "--no-debugger",
+                "--no-reload",
+                "--port=8099"
+            ],
+            "jinja": true,
+            "justMyCode": true
+        },
+        {
+            "name": "Frontend: Chrome",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/aitomations/src/frontend"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack Debug",
+            "configurations": ["Python: Flask", "Frontend: Chrome"]
+        }
+    ]
 }
+```
 
-### **2. Start a Debug Session**
+### Start Debugging
 
-**Important:** Do **NOT** start the servers manually in the terminal if you are using this debug method. The debugger will launch them for you.
+1. Stop any manually started servers
+2. Open **Run and Debug** panel (Ctrl+Shift+D)
+3. Select **"Full Stack Debug"** from the dropdown
+4. Press F5 or click the green play button
 
-1. Make sure you have shut down any servers you started manually in your terminals.  
-2. Go to the **Run and Debug** panel.  
-3. From the dropdown at the top, select one of the compound configurations: **Debug Backend & Frontend (Edge)** or **Debug Backend & Frontend (Chrome)**.  
-4. Press the green "Start Debugging" arrow (or F5).
+Set breakpoints in `.py` and `.vue` files - the debugger will pause execution as expected.
 
-VS Code will now:
+## 🏠 Testing in Home Assistant
 
-* Start the Python Flask server in debug mode.  
-* Launch a new browser window attached to the debugger.  
-* Start the Vite dev server (you'll see its output in the Debug Console).
+Test the add-on in a complete Home Assistant OS environment using a virtual machine.
 
-You can now set breakpoints in your .py files and your .vue files, and the debugger will pause execution as expected.
+### Method 1: UTM (Recommended for macOS)
 
-## **Testing in Home Assistant**
+UTM supports both Apple Silicon and Intel Macs with a single setup process.
 
-To test your add-on with the full installation experience, you must run it in a proper **Home Assistant OS** environment. The recommended method for macOS is running HA OS in a virtual machine.
+#### Install Home Assistant OS
 
-### **1. Set Up a Home Assistant OS Virtual Machine**
+1. **Install UTM**: Download from [mac.getutm.app](https://mac.getutm.app/)
 
-The standard `docker` and `docker-compose` methods install **Home Assistant Core**, which does **not** include the Supervisor or the Add-on Store.
+2. **Download HA OS**: Get the appropriate image from the [releases page](https://github.com/home-assistant/operating-system/releases):
+   - Apple Silicon: `haos_generic-aarch64-XX.X.qcow2.xz`
+   - Intel: `haos_ova-XX.X.qcow2.xz`
+   - Extract the `.xz` file (double-click in Finder)
 
-*Note: We recommend using UTM instead of VirtualBox because UTM supports both Apple Silicon (M1/M2/M3) and Intel-based Macs, providing a single set of instructions for all developers.*
+3. **Create VM**:
+   - Open UTM → Click **+** → **Virtualize** → **Linux**
+   - Select the `.qcow2` file as boot image
+   - Accept defaults (4GB RAM recommended)
+   - Check **"Open VM Settings"** → **Save**
 
-1.  **Install UTM:** Download and install [UTM](https://mac.getutm.app/), a free virtual machine application for macOS.
-2.  **Download Home Assistant OS:** Go to the [official releases page](https://github.com/home-assistant/operating-system/releases) and download the `.qcow2.xz` image for your Mac's architecture. This is a compressed file.
-    *   **Apple Silicon (M1/M2/M3):** `haos_generic-aarch64-XX.X.qcow2.xz`
-    *   **Intel:** `haos_ova-XX.X.qcow2.xz`
-    *   After downloading, decompress the file to get the `.qcow2` disk image. On macOS, you can usually just double-click the `.xz` file in Finder to extract it.
-3.  **Create the VM in UTM:**
-    *   Open UTM and click **+** to create a new machine.
-    *   Select **Virtualize**, then **Linux**.
-    *   Click **Browse** next to "Boot ISO Image" and select the `.qcow2` file you just unzipped. Click **Continue**.
-    *   Accept the default settings for memory and storage (4GB RAM is a good start).
-    *   On the final "Summary" screen, check the box for **"Open VM Settings"** and click **Save**.
-4.  **Correct the Drives:**
-    *   The VM settings will open automatically. Go to the **Drives** section on the left.
-    *   You will see two drives. Select the one that is **NOT** your `haos...qcow2` image (it will likely be named `virtio-drive-0` or similar) and click the **Delete** button.
-    *   You should now have only one drive left. Click **Save**.
-5.  **Start and Configure:**
-    *   Start the VM from the main UTM window.
-    *   Wait for it to boot. It can take several minutes. The console will eventually show network information and a welcome banner.
-    *   Navigate to `http://homeassistant.local:8123` in your browser to complete the setup. If that doesn't work, use the IP address shown in the UTM console window (e.g., `http://192.168.1.123:8123`).
-    *   **Note:** If you already have a Home Assistant instance on your network, you should change the hostname of this new test instance to avoid conflicts. You can do this after setup by going to **Settings > System > Network** and changing the "Hostname". For example, changing it to `ha-dev` will make it accessible at `http://ha-dev.local:8123`.
+4. **Fix Drives**:
+   - Go to **Drives** section
+   - Delete the drive that is NOT your `haos...qcow2` image
+   - **Save**
 
-#### **Expanding the Virtual Disk Size (Optional)**
+5. **Start and Configure**:
+   - Start the VM
+   - Wait for boot (several minutes)
+   - Access at `http://homeassistant.local:8123` or use the IP shown in console
+   - Complete the onboarding wizard
 
-If you need more than the default 32GB of storage for your test instance, you can expand the virtual disk.
+**Tip**: Change hostname to avoid conflicts with existing HA instances:
+**Settings** → **System** → **Network** → Change "Hostname" to `ha-dev`
 
-1.  **Shut down the VM** in UTM.
-2.  **Right-click** the VM and select **Edit**.
-3.  Go to the **Drives** tab.
-4.  Select the main `haos...` drive.
-5.  Change the **Size (GB)** to a larger value (e.g., 64).
-6.  **Save** the settings and restart the VM. Home Assistant OS will automatically resize its data partition on the next boot.
+#### Load Your Add-on
 
-### **2. Add Your Local Add-on Repository**
+1. **Build the add-on**:
+   ```bash
+   make build
+   ```
 
-To get your add-on into your new Home Assistant VM, you need to serve your local files over the network.
+2. **Start local web server**:
+   ```bash
+   python3 -m http.server 8080
+   ```
 
-1.  **Start a Web Server:** In your VS Code terminal, serve your project directory:
-    ```bash
-    python3 -m http.server 8080
-    ```
-2.  **Add Repository to Home Assistant:**
-    *   In your Home Assistant UI, go to **Settings > Add-ons > Add-on Store**.
-    *   Click the three-dots menu and select **Repositories**.
-    *   Enter the following URL and click **Add**: `http://host.docker.internal:8080`
-    *   *Note: `host.docker.internal` is a special DNS name that resolves to the host machine (your Mac) from within Docker containers, which is how Home Assistant OS runs its components.*
+3. **Add repository in Home Assistant**:
+   - **Settings** → **Add-ons** → **Add-on Store**
+   - Three-dots menu → **Repositories**
+   - Add: `http://host.docker.internal:8080`
 
-### **3. Install and Configure the Add-on**
+4. **Install**:
+   - Find **AItomations Creator** in "Local add-ons"
+   - Click **Install**
+   - Configure your API keys
+   - Start the add-on
+   - Click **Open Web UI**
 
-1.  Close the repository dialog. A new "Local add-ons" section will appear in the store.
-2.  Find your **AItomations** add-on and click **Install**.
-3.  Once installed, go to the **Configuration** tab to set up your API keys.
-4.  Go to the **Info** tab, start the add-on, and check the **Log** tab for errors.
-5.  Click **Open Web UI** to access your add-on's interface.
+### Method 2: Docker Test Container (Quick Testing)
 
-## **Project Structure**
-
-.  
-├── .devcontainer/     # VS Code Development Container configuration  
-├── add-on/            # The Home Assistant Add-on itself  
-│   ├── Dockerfile     # The production Dockerfile for the add-on  
-│   ├── config.json    # Add-on manifest and configuration  
-│   ├── run.sh         # Script that runs when the add-on starts  
-│   └── src/           # Source code for the frontend and backend  
-│       ├── backend/   # Python Flask server  
-│       └── frontend/  # Vue 3 + Vuetify user interface  
-└── requirements.txt   # Python dependencies  
-
-
-# Run in the Home Assistant Test Container
-
-The Test container runs on docker on the development box (laptop)
+For quick testing without full HA OS features:
 
 ```bash
-docker config up -d
+# Start test container
+docker-compose up -d
+
+# Access Home Assistant
+# http://localhost:8123
+# User: admin
+# Password: Adminpassword-123
+
+# Shutdown
+docker-compose down
 ```
 
-Shutdown:
+**Note**: This runs Home Assistant Core, which lacks the Supervisor and Add-on Store.
+
+## 📦 Building and Deploying
+
+### Build for Release
 
 ```bash
-docker config down
+# Full build with validation
+make build
+
+# Quick build (skip type checking)
+make build-incremental
+
+# Frontend only
+make build-frontend
 ```
 
-Connect with
-```
-"$BROWSER" http://localhost:8123
+### Deploy to Test Instance
+
+Configure deployment in `.deploy.test.env`:
+
+```bash
+HA_HOST=192.168.1.100
+HA_USER=root
+HA_PORT=22
+HA_PATH=/addons/local_aitomations-creator
 ```
 
-User admin
-Pasword: `Adminpassword-123`
+Deploy:
+
+```bash
+# Build and deploy
+make deploy TARGET=test
+
+# Deploy without rebuilding
+make deploy-quick TARGET=test
+
+# Restart add-on
+make restart TARGET=test
+
+# View logs
+make logs TARGET=test
+```
+
+## 📁 Project Structure
+
+```
+.
+├── .devcontainer/              # VS Code Dev Container config
+├── aitomations/                # Main add-on directory
+│   ├── src/
+│   │   ├── backend/           # Python Flask API
+│   │   │   ├── app.py        # Main Flask application
+│   │   │   ├── api/          # API routes and errors
+│   │   │   └── llm/          # LLM provider implementations
+│   │   └── frontend/         # Vue 3 + Vuetify UI
+│   │       ├── src/
+│   │       │   ├── components/  # Vue components
+│   │       │   ├── views/       # Page views
+│   │       │   ├── services/    # API and error services
+│   │       │   └── composables/ # Vue composables
+│   ├── Dockerfile            # Production container
+│   ├── config.json          # Add-on manifest
+│   └── run.sh              # Add-on startup script
+├── build/                   # Build output (git-ignored)
+├── Makefile                # Build and deployment commands
+└── README.md
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](aitomations/Contributions.md) for guidelines.
+
+### Quick Start for Contributors
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes
+4. Validate: `make validate`
+5. Commit: `git commit -m 'Add amazing feature'`
+6. Push: `git push origin feature/amazing-feature`
+7. Open a Pull Request
+
+### Code Standards
+
+- **Python**: Follow PEP 8, use `ruff` for linting
+- **TypeScript/Vue**: Follow the ESLint configuration
+- **All code must pass**: `make validate` before committing
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 📫 Support
+
+- **Issues**: [GitHub Issues](https://github.com/gmatrangola/aitomations/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/gmatrangola/aitomations/discussions)
+- **Home Assistant Community**: [Community Forum](https://community.home-assistant.io/)
+
+---
+
+Made with ❤️ for the Home Assistant community

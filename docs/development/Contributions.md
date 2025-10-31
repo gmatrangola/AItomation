@@ -4,7 +4,7 @@ Thank you for your interest in contributing!
 
 ## Development Setup
 
-[Link to relevant README section]
+[This](../../README.md#-development-setup) is how I set up my environment.
 
 ## Submitting Changes
 
