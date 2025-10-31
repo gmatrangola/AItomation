@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*.*.*'
 
+permissions:
+  contents: write
+  packages: write
+
 env:
   DOCKER_USERNAME: gmatrangola
   IMAGE_NAME: aitomations
