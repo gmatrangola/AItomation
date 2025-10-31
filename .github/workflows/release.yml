@@ -1,0 +1,263 @@
+name: Release Workflow
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  DOCKER_USERNAME: gmatrangola
+  IMAGE_NAME: aitomations
+
+jobs:
+  prepare-release:
+    name: Prepare Release Files
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Update config.json with version
+        run: |
+          cd aitomations
+          jq --arg version "${{ steps.version.outputs.VERSION }}" \
+             '.version = $version' \
+             config.json > config.json.tmp
+          mv config.json.tmp config.json
+
+      - name: Update README.md badge
+        run: |
+          sed -i "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/version-${{ steps.version.outputs.VERSION }}-blue/g" README.md
+
+      - name: Validate changelog has entry
+        run: |
+          if ! grep -q "## \[${{ steps.version.outputs.VERSION }}\]" aitomations/Changelog.md; then
+            echo "ERROR: No changelog entry found for version ${{ steps.version.outputs.VERSION }}"
+            echo "Please add a section in aitomations/Changelog.md before tagging"
+            exit 1
+          fi
+
+      - name: Commit version updates
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add aitomations/config.json README.md
+          
+          # Only commit if there are changes
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }} [skip ci]"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: |
+            aitomations/config.json
+            README.md
+
+  validate:
+    name: Validate Code
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Validate code
+        run: make validate
+
+  build-release:
+    name: Build Release Image
+    needs: [prepare-release, validate]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, armv7, aarch64, armhf, i386]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Install pnpm and build frontend
+        run: |
+          npm install -g pnpm
+          cd aitomations/src/frontend
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Map architecture
+        id: arch
+        run: |
+          case "${{ matrix.arch }}" in
+            amd64) echo "DOCKER_ARCH=linux/amd64" >> $GITHUB_OUTPUT; echo "BUILD_FROM=ghcr.io/home-assistant/amd64-base:latest" >> $GITHUB_OUTPUT ;;
+            armv7) echo "DOCKER_ARCH=linux/arm/v7" >> $GITHUB_OUTPUT; echo "BUILD_FROM=ghcr.io/home-assistant/armv7-base:latest" >> $GITHUB_OUTPUT ;;
+            aarch64) echo "DOCKER_ARCH=linux/arm64" >> $GITHUB_OUTPUT; echo "BUILD_FROM=ghcr.io/home-assistant/aarch64-base:latest" >> $GITHUB_OUTPUT ;;
+            armhf) echo "DOCKER_ARCH=linux/arm/v6" >> $GITHUB_OUTPUT; echo "BUILD_FROM=ghcr.io/home-assistant/armhf-base:latest" >> $GITHUB_OUTPUT ;;
+            i386) echo "DOCKER_ARCH=linux/386" >> $GITHUB_OUTPUT; echo "BUILD_FROM=ghcr.io/home-assistant/i386-base:latest" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: Build and push release
+        uses: docker/build-push-action@v5
+        with:
+          context: ./aitomations
+          file: ./aitomations/Dockerfile
+          platforms: ${{ steps.arch.outputs.DOCKER_ARCH }}
+          build-args: |
+            BUILD_FROM=${{ steps.arch.outputs.BUILD_FROM }}
+          push: true
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.arch }}:latest
+            ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.arch }}:${{ needs.prepare-release.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+  update-install-repo:
+    name: Update Install Repository
+    needs: [prepare-release, build-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: source
+
+      - name: Checkout install repository
+        uses: actions/checkout@v4
+        with:
+          repository: glmatra/aitomation-install
+          token: ${{ secrets.INSTALL_REPO_TOKEN }}
+          path: install
+
+      - name: Sync files from source to install repo
+        run: |
+          mkdir -p install/aitomations-creator
+          
+          # Copy files (version already updated in config.json)
+          cp source/aitomations/config.json install/aitomations-creator/config.json
+          cp source/docs/install/README.md install/aitomations-creator/README.md
+          cp source/docs/install/DOCS.md install/aitomations-creator/DOCS.md
+          
+          # Generate CHANGELOG entry
+          cd source
+          awk -v version="${{ needs.prepare-release.outputs.version }}" \
+              '/^## \['"$version"'\]/ { found=1; print; next } 
+               /^## \[/ { if (found) exit }
+               found { print }' \
+              aitomations/Changelog.md > ../install/aitomations-creator/new_entry.md
+          
+          cd ../install/aitomations-creator
+          
+          if [ ! -f CHANGELOG.md ]; then
+            echo "# Changelog" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
+          
+          if [ -s new_entry.md ]; then
+            echo -e "# Changelog\n" > CHANGELOG.new.md
+            cat new_entry.md >> CHANGELOG.new.md
+            echo "" >> CHANGELOG.new.md
+            tail -n +2 CHANGELOG.md >> CHANGELOG.new.md
+            mv CHANGELOG.new.md CHANGELOG.md
+          fi
+          
+          rm -f new_entry.md
+          
+          # Copy icons
+          if [ -f ../../source/docs/install/icon.png ]; then
+            cp ../../source/docs/install/icon.png icon.png
+          fi
+          if [ -f ../../source/docs/install/logo.png ]; then
+            cp ../../source/docs/install/logo.png logo.png
+          fi
+
+      - name: Commit and push changes
+        run: |
+          cd install
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add aitomations-creator/
+          
+          if ! git diff --staged --quiet; then
+            git commit -m "Release version ${{ needs.prepare-release.outputs.version }}" \
+                       -m "Auto-synced from source repository" \
+                       -m "Source commit: ${{ github.sha }}" \
+                       -m "Release tag: v${{ needs.prepare-release.outputs.version }}"
+            git push origin main
+          fi
+
+  create-github-release:
+    name: Create GitHub Release
+    needs: [prepare-release, update-install-repo]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Extract changelog for this version
+        run: |
+          if [ -f aitomations/Changelog.md ]; then
+            awk -v version="${{ needs.prepare-release.outputs.version }}" \
+                '/^## \['"$version"'\]/ { found=1; next } 
+                 /^## \[/ { if (found) exit }
+                 found { print }' \
+                aitomations/Changelog.md > release_notes.md
+          else
+            echo "Release version ${{ needs.prepare-release.outputs.version }}" > release_notes.md
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.prepare-release.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

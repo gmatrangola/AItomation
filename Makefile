@@ -364,3 +364,24 @@ type-check: ## Run type checking only
 
 # Add a comprehensive check target
 check: lint type-check test ## Run all checks (lint, type-check, test)
+
+release: ## Create a new release (usage: make release VERSION=1.0.1)
+    @if [ -z "$(VERSION)" ]; then \
+        echo "Error: VERSION is required"; \
+        echo "Usage: make release VERSION=1.0.1"; \
+        exit 1; \
+    fi
+    @./scripts/release.sh $(VERSION)
+
+check-version: ## Check current version information
+    @echo "Git tags:"
+    @git tag -l "v*" | tail -5
+    @echo ""
+    @echo "config.json version:"
+    @jq -r '.version' aitomations/config.json
+    @echo ""
+    @echo "README.md badge:"
+    @grep -o 'version-[0-9.]*-blue' README.md || echo "Not found"
+    @echo ""
+    @echo "Latest CHANGELOG entry:"
+    @grep -m 1 "^## \[" aitomations/Changelog.md || echo "Not found"
