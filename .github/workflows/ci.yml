@@ -252,11 +252,10 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Release version ${{ steps.version.outputs.VERSION }}
-
-Auto-synced from source repository
-Source commit: ${{ github.sha }}
-Release tag: v${{ steps.version.outputs.VERSION }}"
+            git commit -m "Release version ${{ steps.version.outputs.VERSION }}" \
+                       -m "Auto-synced from source repository" \
+                       -m "Source commit: ${{ github.sha }}" \
+                       -m "Release tag: v${{ steps.version.outputs.VERSION }}"
             git push origin main
           fi
 
