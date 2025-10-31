@@ -8,8 +8,6 @@
     "init": false,
     "arch": [
         "aarch64",
-        "i386",
-        "armhf",
         "armv7",
         "amd64"
     ],

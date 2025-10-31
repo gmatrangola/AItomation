@@ -2,7 +2,8 @@
 ARG BUILD_FROM
 
 # --- Builder Stage with better caching ---
-FROM node:20-alpine AS builder
+# Use buildx automatic platform selection for Node
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 # Install pnpm first (this layer rarely changes)
 RUN npm install -g pnpm
