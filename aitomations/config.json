@@ -1,38 +1,38 @@
 {
-    "name": "AItomations Creator",
-    "version": "0.1.0",
-    "slug": "aitomations-creator",
-    "description": "Create Home Assistant automations using LLMs like Gemini or Ollama.",
-    "url": "https://github.com/glmatra/aitomations",
-    "startup": "application",
-    "init": false,
-    "arch": [
-        "aarch64",
-        "armv7",
-        "amd64"
-    ],
-    "ingress": true,
-    "ingress_port": 8099,
-    "ingress_entry": "/",
-    "panel_icon": "mdi:robot",
-    "hassio_api": true,
-    "homeassistant_api": true,
-    "auth_api": true,
-    "host_network": true,
-    "options": {
-        "llm_provider": "gemini",
-        "gemini_api_key": "",
-        "gemini_model": "gemini-2.5-pro",
-        "ollama_api_url": "http://host.local:11434/api/generate",
-        "ollama_model": "llama3",
-        "request_timeout": 120
-    },
-    "schema": {
-        "llm_provider": "list(gemini|ollama)",
-        "gemini_api_key": "password?",
-        "gemini_model": "list(gemini-2.5-flash|gemini-2.5-pro)?",
-        "ollama_api_url": "url?",
-        "ollama_model": "str?",
-        "request_timeout": "int(30,600)?"
-    }
+  "name": "AItomations Creator",
+  "version": "1.0.0",
+  "slug": "aitomations-creator",
+  "description": "Create Home Assistant automations using LLMs like Gemini or Ollama.",
+  "url": "https://github.com/glmatra/aitomations",
+  "startup": "application",
+  "init": false,
+  "arch": [
+    "aarch64",
+    "armv7",
+    "amd64"
+  ],
+  "ingress": true,
+  "ingress_port": 8099,
+  "ingress_entry": "/",
+  "panel_icon": "mdi:robot",
+  "hassio_api": true,
+  "homeassistant_api": true,
+  "auth_api": true,
+  "host_network": true,
+  "options": {
+    "llm_provider": "gemini",
+    "gemini_api_key": "",
+    "gemini_model": "gemini-2.5-pro",
+    "ollama_api_url": "http://host.local:11434/api/generate",
+    "ollama_model": "llama3",
+    "request_timeout": 120
+  },
+  "schema": {
+    "llm_provider": "list(gemini|ollama)",
+    "gemini_api_key": "password?",
+    "gemini_model": "list(gemini-2.5-flash|gemini-2.5-pro)?",
+    "ollama_api_url": "url?",
+    "ollama_model": "str?",
+    "request_timeout": "int(30,600)?"
+  }
 }
