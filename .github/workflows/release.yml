@@ -48,18 +48,6 @@ jobs:
             exit 1
           fi
 
-      - name: Commit version updates
-        run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          git add aitomations/config.json README.md
-          
-          # Only commit if there are changes
-          if ! git diff --staged --quiet; then
-            git commit -m "chore: bump version to ${{ steps.version.outputs.VERSION }} [skip ci]"
-            git push origin HEAD:main
-          fi
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

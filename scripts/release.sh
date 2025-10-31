@@ -1,9 +1,6 @@
 #!/bin/bash
 set -e
 
-# Script to create a new release
-# Usage: ./scripts/release.sh 1.0.1
-
 if [ $# -eq 0 ]; then
     echo "Usage: $0 <version>"
     echo "Example: $0 1.0.1"
@@ -52,7 +49,22 @@ if ! grep -q "## \[${VERSION}\]" aitomations/Changelog.md; then
     exit 1
 fi
 
-# Validate code before tagging
+echo "📝 Updating version numbers..."
+
+# Update config.json
+cd aitomations
+jq --arg version "$VERSION" '.version = $version' config.json > config.json.tmp
+mv config.json.tmp config.json
+cd ..
+
+# Update README.md badge
+sed -i "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/version-${VERSION}-blue/g" README.md
+
+# Commit version changes
+git add aitomations/config.json README.md
+git commit -m "chore: bump version to ${VERSION}"
+git push origin main
+
 echo "🔍 Validating code..."
 make validate
 
@@ -61,7 +73,6 @@ echo ""
 echo "Creating release ${VERSION}..."
 echo "  1. Tag: ${TAG}"
 echo "  2. This will trigger:"
-echo "     - Version updates in config.json and README.md"
 echo "     - Docker image builds for all architectures"
 echo "     - Update to installation repository"
 echo "     - GitHub release creation"
@@ -81,7 +92,7 @@ git push origin "$TAG"
 echo "✅ Tag ${TAG} created and pushed"
 echo ""
 echo "🎉 Release process started!"
-echo "   Monitor progress at: https://github.com/gmatrangola/aitomations/actions"
+echo "   Monitor progress at: https://github.com/gmatrangola/AItomation/actions"
 echo ""
 echo "After the workflow completes:"
 echo "  - Docker images will be available at: docker pull gmatrangola/aitomations-amd64:${VERSION}"
