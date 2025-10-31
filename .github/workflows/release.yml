@@ -155,7 +155,7 @@ jobs:
       - name: Checkout install repository
         uses: actions/checkout@v4
         with:
-          repository: glmatra/aitomation-install
+          repository: gmatrangola/aitomation-install
           token: ${{ secrets.INSTALL_REPO_TOKEN }}
           path: install
 

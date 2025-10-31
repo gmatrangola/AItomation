@@ -5,7 +5,7 @@
 Add this repository to your Home Assistant:
 
 ```
-https://github.com/glmatra/aitomation-install
+https://github.com/gmatrangola/aitomation-install
 ```
 
 Then install the **AItomations Creator** add-on.

@@ -2,6 +2,8 @@
 
 Create Home Assistant automations using natural language! Just describe what you want, and let AI generate the YAML for you.
 
+![Screen Shot](Screenshot.png)
+
 ## Features
 
 - 🗣️ **Natural Language** - Describe automations in plain English
