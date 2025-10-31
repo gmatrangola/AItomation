@@ -3,6 +3,7 @@ import type { ChatMessage } from '@/types/chat';
 import type { APIError } from '@/types/errors';
 import type { ProgressEvent } from '@/services/chatService';
 import { ChatService } from '@/services/chatService';
+import { v4 as uuidv4 } from 'uuid';
 
 const chatService = new ChatService();
 
@@ -20,12 +21,25 @@ export function useChat() {
         try {
             const response = await fetch('api/chat/history');
             if (response.ok) {
-                const history = await response.json();
-                messages.value = history;
-                console.log('[useChat] Loaded chat history:', history.length, 'messages');
+                const data = await response.json();
+                // Handle both formats: direct array or object with messages property
+                const history = data.messages;
+                // Ensure we always set an array, even if response is null/undefined
+                if (Array.isArray(history)) {
+                    // Convert timestamp strings/numbers to Date objects
+                    messages.value = history.map((msg: ChatMessage) => ({
+                        ...msg,
+                        timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+                    }));
+                } else {
+                    messages.value = [];
+                }
+            } else {
+                messages.value = []; // Ensure empty array on error
             }
         } catch (error) {
             console.error('[useChat] Failed to load history:', error);
+            messages.value = []; // Ensure empty array on error
         }
     };
 
@@ -44,7 +58,7 @@ export function useChat() {
 
         // Add user message
         const userMessage: ChatMessage = {
-            id: crypto.randomUUID(),
+            id: uuidv4(),
             role: 'user',
             content: prompt,
             timestamp: new Date(),
@@ -59,7 +73,7 @@ export function useChat() {
             const conversationHistory = messages.value;
 
             let accumulatedContent = '';
-            const assistantMessageId = crypto.randomUUID();
+            const assistantMessageId = uuidv4();
 
             // Use generator pattern for streaming
             const streamGenerator = chatService.sendMessageStream(
@@ -112,10 +126,16 @@ export function useChat() {
 
                 // Save to backend storage
                 try {
+                    // Convert messages to a format safe for JSON serialization
+                    const messagesToSave = messages.value.map((msg) => ({
+                        ...msg,
+                        timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
+                    }));
+
                     await fetch('api/chat/history', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(messages.value),
+                        body: JSON.stringify({ messages: messagesToSave }),
                     });
                 } catch (error) {
                     console.error('[useChat] Failed to save history:', error);

@@ -19,8 +19,6 @@ export class ChatStorage {
      */
     static async save(messages: ChatMessage[]): Promise<void> {
         try {
-            console.log('[ChatStorage] Saving', messages.length, 'messages to HA storage');
-
             // Convert Date objects to ISO strings for JSON serialization
             const serializedMessages: SerializedMessage[] = messages.map((msg) => ({
                 ...msg,
@@ -36,8 +34,6 @@ export class ChatStorage {
             if (!response.ok) {
                 throw new Error(`Failed to save: HTTP ${response.status}`);
             }
-
-            console.log('[ChatStorage] Successfully saved to HA storage');
         } catch (error) {
             console.error('[ChatStorage] Failed to save:', error);
             // Fall back to localStorage as backup
@@ -50,8 +46,6 @@ export class ChatStorage {
      */
     static async load(): Promise<ChatMessage[] | null> {
         try {
-            console.log('[ChatStorage] Loading messages from HA storage');
-
             const response = await fetch('api/chat/history');
 
             if (!response.ok) {
@@ -62,7 +56,6 @@ export class ChatStorage {
             const messages: SerializedMessage[] = data.messages || [];
 
             if (messages.length === 0) {
-                console.log('[ChatStorage] No messages found in HA storage');
                 // Try to load from localStorage as fallback
                 return this.loadFromLocalStorage();
             }
@@ -73,7 +66,6 @@ export class ChatStorage {
                 timestamp: new Date(msg.timestamp),
             }));
 
-            console.log('[ChatStorage] Loaded', parsedMessages.length, 'messages from HA storage');
             return parsedMessages;
         } catch (error) {
             console.error('[ChatStorage] Failed to load from HA storage:', error);
@@ -87,8 +79,6 @@ export class ChatStorage {
      */
     static async clear(): Promise<void> {
         try {
-            console.log('[ChatStorage] Clearing HA storage');
-
             const response = await fetch('api/chat/history', {
                 method: 'DELETE',
             });
@@ -96,9 +86,6 @@ export class ChatStorage {
             if (!response.ok) {
                 throw new Error(`Failed to clear: HTTP ${response.status}`);
             }
-
-            console.log('[ChatStorage] Successfully cleared HA storage');
-
             // Also clear localStorage backup
             this.clearLocalStorage();
         } catch (error) {
@@ -140,7 +127,6 @@ export class ChatStorage {
                 timestamp: Date.now(),
             };
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-            console.log('[ChatStorage] Saved to localStorage as fallback');
         } catch (error) {
             console.error('[ChatStorage] Failed to save to localStorage:', error);
         }
@@ -157,7 +143,6 @@ export class ChatStorage {
                 timestamp: new Date(msg.timestamp),
             }));
 
-            console.log('[ChatStorage] Loaded from localStorage fallback');
             return messages;
         } catch (error) {
             console.error('[ChatStorage] Failed to load from localStorage:', error);
@@ -168,7 +153,6 @@ export class ChatStorage {
     private static clearLocalStorage(): void {
         try {
             localStorage.removeItem(this.STORAGE_KEY);
-            console.log('[ChatStorage] Cleared localStorage');
         } catch (error) {
             console.error('[ChatStorage] Failed to clear localStorage:', error);
         }

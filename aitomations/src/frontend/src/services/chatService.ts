@@ -31,8 +31,6 @@ export class ChatService {
         onChunk: (text: string) => void,
         onProgress?: (progress: ProgressEvent) => void
     ): Promise<{ message: ChatMessage; error?: APIError }> {
-        console.log('[ChatService] sendMessageStream called with prompt:', prompt);
-
         try {
             const requestBody = {
                 prompt,
@@ -42,15 +40,11 @@ export class ChatService {
                 })),
             };
 
-            console.log('[ChatService] Sending request to:', 'api/generate_automation/stream');
-
             const response = await fetch('api/generate_automation/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody),
             });
-
-            console.log('[ChatService] Response status:', response.status, response.ok);
 
             if (!response.ok) {
                 // Try to get structured error
@@ -79,12 +73,10 @@ export class ChatService {
                 };
             }
 
-            console.log('[ChatService] Starting SSE stream reading...');
-
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) {
-                    console.log('[ChatService] Stream complete');
+                    // ChatService Stream complet
                     break;
                 }
 
@@ -95,16 +87,12 @@ export class ChatService {
                     if (line.startsWith('data: ')) {
                         try {
                             const jsonStr = line.slice(6);
-                            console.log('[ChatService] Parsing SSE line:', jsonStr);
                             const data = JSON.parse(jsonStr);
-                            console.log('[ChatService] SSE data parsed:', data);
-
                             if (data.type === 'content') {
                                 fullResponse += data.text;
                                 onChunk(data.text);
                             } else if (data.type === 'done') {
                                 fullResponse = data.full_response;
-                                console.log('[ChatService] Received done event');
                             } else if (data.type === 'error') {
                                 // Structured error from backend
                                 console.error('[ChatService] ❌ ERROR EVENT from backend:', data);
@@ -114,7 +102,6 @@ export class ChatService {
                                 };
                             } else if (data.type === 'progress') {
                                 // Progress update
-                                console.log('[ChatService] Progress update:', data);
                                 if (onProgress) {
                                     onProgress({
                                         stage: data.stage,
@@ -157,7 +144,6 @@ export class ChatService {
             // Check if it's a structured error
             const apiError = error as APIError;
             if (apiError.error_code) {
-                console.log('[ChatService] Returning structured error:', apiError);
                 return {
                     message: {
                         id: uuidv4(),
@@ -170,7 +156,6 @@ export class ChatService {
             }
 
             // Fallback for unexpected errors
-            console.log('[ChatService] Returning fallback error');
             return {
                 message: {
                     id: uuidv4(),

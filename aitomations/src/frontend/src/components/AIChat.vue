@@ -2,7 +2,7 @@
     <div class="ai-chat-container">
         <!-- Chat Messages -->
         <div ref="messagesContainer" class="messages-container">
-            <template v-if="messages.length === 0 && !streamingMessage && !isConnecting">
+            <template v-if="messages.length === 0">
                 <div class="empty-state">
                     <v-icon size="48" color="primary">mdi-chat-outline</v-icon>
                     <h3 class="mt-3">Start a Conversation</h3>
@@ -31,7 +31,7 @@
                 />
 
                 <!-- Connecting State - Show immediately while waiting for backend -->
-                <div v-if="isConnecting" class="chat-message chat-message--assistant">
+                <div v-if="isSending || isConnecting" class="chat-message chat-message--assistant">
                     <div class="chat-message__header">
                         <v-avatar color="success" size="28">
                             <v-icon size="small">mdi-robot</v-icon>
@@ -243,6 +243,7 @@ const emit = defineEmits<{
 
 const internalPrompt = ref(props.modelValue);
 const messagesContainer = ref<HTMLElement>();
+const isSending = ref(false); // Add local sending state
 
 const examplePrompts = ['Turn on lights at sunset', 'Notify me when door opens', 'Coffee maker on weekdays at 7am'];
 
@@ -307,7 +308,13 @@ const handleSend = async () => {
 
     const prompt = internalPrompt.value.trim();
     internalPrompt.value = '';
-    await sendMessage(prompt);
+
+    isSending.value = true; // Set immediately
+    try {
+        await sendMessage(prompt);
+    } finally {
+        isSending.value = false; // Clear after send completes
+    }
 };
 
 const handleNewLine = () => {

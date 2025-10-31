@@ -133,12 +133,10 @@ def get_automations():
 @api_blueprint.route("/chat/history", methods=["GET"])
 def get_chat_history():
     """Get persisted chat history from Home Assistant storage."""
-    current_app.logger.info(" get_chat_history called")
     try:
         storage_path = "/data/chat_history.json"
 
         if not os.path.exists(storage_path):
-            current_app.logger.info(" No chat history found")
             return jsonify({"messages": []})
 
         with open(storage_path) as f:
@@ -149,7 +147,6 @@ def get_chat_history():
         age_days = (time.time() - timestamp) / (60 * 60 * 24)
 
         if age_days > 7:
-            current_app.logger.info(f" Chat history is {age_days:.1f} days old, clearing")
             os.remove(storage_path)
             return jsonify({"messages": []})
 
@@ -165,7 +162,6 @@ def get_chat_history():
 @api_blueprint.route("/chat/history", methods=["POST"])
 def save_chat_history():
     """Save chat history to Home Assistant storage."""
-    current_app.logger.info(" save_chat_history called")
     try:
         data = request.get_json()
         messages = data.get("messages", [])
@@ -181,7 +177,6 @@ def save_chat_history():
         with open(storage_path, "w") as f:
             json.dump(storage_data, f, indent=2)
 
-        current_app.logger.info(" Chat history saved successfully")
         return jsonify({"success": True})
     except Exception as e:
         current_app.logger.error(f" Error saving chat history: {e}")
@@ -191,7 +186,6 @@ def save_chat_history():
 @api_blueprint.route("/chat/history", methods=["DELETE"])
 def clear_chat_history():
     """Clear persisted chat history."""
-    current_app.logger.info(" clear_chat_history called")
     try:
         storage_path = "/data/chat_history.json"
 
@@ -208,19 +202,15 @@ def clear_chat_history():
 @api_blueprint.route("/generate_automation/stream", methods=["POST"])
 def generate_automation_stream():
     """Generate automation with streaming response via Server-Sent Events."""
-    current_app.logger.info("/api/generate_automation/stream endpoint called")
 
     def generate():
         try:
             yield ": connected\n\n"
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'initializing_context'})}\n\n"
             data = request.get_json()
-            current_app.logger.info("read request json data")
 
             prompt = data.get("prompt")
-            current_app.logger.info(f"got prompt {prompt}")
             conversation_history = data.get("conversation_history", [])
-            current_app.logger.info(f"got conversation history with {len(conversation_history)} messages")
 
             if not prompt:
                 error_response = {
@@ -379,129 +369,6 @@ mode: single
             "Connection": "keep-alive",
         },
     )
-
-
-@api_blueprint.route("/generate_automation", methods=["POST"])
-def generate_automation():
-    current_app.logger.info(" /api/generate_automation endpoint called.")
-    try:
-        data = request.get_json()
-        prompt = data.get("prompt")
-        if not prompt:
-            return jsonify({"error": "A non-empty prompt is required"}), 400
-
-        options = get_options()
-        llm_provider_name = options.get("llm_provider", "ollama")
-        current_app.logger.info(f" Using LLM provider: {llm_provider_name}")
-        llm_provider = get_llm_provider(llm_provider_name)
-
-        ha_context, context_summary = _get_ha_context()
-
-        creation_prompt = f"""You are an expert Home Assistant automation assistant. Your goal is to generate a single, complete YAML configuration for an automation based on the user's request and the provided context.
-
-**Instructions:**
-1.  Analyze the user's request and the available Home Assistant context (entities, services).
-2.  Create a valid Home Assistant automation in YAML format.
-3.  Your response **MUST** be in Markdown format.
-4.  The response should contain two parts:
-    - An "Explanation" section that describes what the automation does in simple terms.
-    - A "YAML" section containing the automation configuration inside a `yaml` code block.
-
-**Home Assistant Context:**
-```json
-{json.dumps(ha_context, indent=2)}
-```
-
-**User Request:**
-{prompt}
-
-Example Response Format:
-
-## Explanation
-This automation will turn on the kitchen light when motion is detected.
-
-```yaml
-alias: Turn on Kitchen Light on Motion
-description: ''
-trigger:
-  - platform: state
-    entity_id: binary_sensor.kitchen_motion
-    to: 'on'
-action:
-  - service: light.turn_on
-    target:
-      entity_id: light.kitchen_light
-mode: single
-```
-"""
-        current_app.logger.debug(f" Full prompt sent to LLM:\n---\n{creation_prompt}\n---")
-
-        llm_response = llm_provider.generate(creation_prompt, options)
-        llm_response["context_summary"] = context_summary
-        llm_response["prompt"] = prompt
-        return jsonify(llm_response)
-    except Exception as e:
-        current_app.logger.error(f" An exception occurred in generate_automation: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
-
-
-@api_blueprint.route("/edit_automation", methods=["POST"])
-def edit_automation():
-    try:
-        data = request.get_json()
-        if not all(k in data for k in ["automation_id", "prompt"]):
-            return jsonify({"error": "automation_id and prompt are required"}), 400
-
-        config_response = requests.get(
-            f"{HA_API_URL}/config/automation/config/{data['automation_id']}", headers=HA_HEADERS
-        )
-        config_response.raise_for_status()
-        existing_config = config_response.json()
-
-        if AITOMATIONS_METADATA_KEY in existing_config:
-            del existing_config[AITOMATIONS_METADATA_KEY]
-        existing_yaml = yaml.dump(existing_config)
-
-        ha_context, context_summary = _get_ha_context()
-        options = get_options()
-        llm_provider = get_llm_provider(options.get("llm_provider", "ollama"))
-
-        edit_prompt = f"""You are an expert Home Assistant automation editor. Your goal is to modify an existing automation's YAML based on a user's request.
-
-**Instructions:**
-1.  Analyze the user's modification request and the existing YAML.
-2.  Generate the **complete, new** YAML for the modified automation.
-3.  Your response **MUST** be in Markdown format.
-4.  The response should contain two parts:
-    - An "Explanation" section that describes the changes you made.
-    - A "YAML" section containing the **full** modified automation configuration inside a `yaml` code block.
-
-**Existing Automation YAML:**
-```yaml
-{existing_yaml}
-```
-
-**User's Modification Request:**
-{data["prompt"]}
-
-**Home Assistant Context:**
-```json
-{json.dumps(ha_context, indent=2)}
-```
-"""
-
-        current_app.logger.debug(f" Full prompt sent to LLM for editing:\n---\n{edit_prompt}\n---")
-
-        llm_response = llm_provider.generate(edit_prompt, options)
-        llm_response["context_summary"] = context_summary
-        llm_response["prompt"] = data["prompt"]
-        return jsonify(llm_response)
-    except Exception as e:
-        current_app.logger.error(f" Error in edit_automation: {str(e)}")
-        return jsonify({"error": str(e)}), 500
 
 
 @api_blueprint.route("/install_automation", methods=["POST"])
