@@ -169,8 +169,7 @@ jobs:
           
           # Copy files (version already updated in config.json)
           cp source/aitomations/config.json install/aitomations-creator/config.json
-          cp source/docs/install/README.md install/aitomations-creator/README.md
-          cp source/docs/install/DOCS.md install/aitomations-creator/DOCS.md
+          cp source/docs/install/* install/aitomations-creator/
           
           # Generate CHANGELOG entry
           cd source
