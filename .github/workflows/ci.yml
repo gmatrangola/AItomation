@@ -1,5 +1,6 @@
 name: CI/CD Pipeline
-
+# This CI will run on any push to any branch, pull requests to main, and tags matching v*.*.* pattern.
+# It will validate the code, build snapshot images for main branch pushes, and build release images for version tags.
 on:
   push:
     branches:
