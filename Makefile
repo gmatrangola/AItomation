@@ -373,6 +373,26 @@ release: ## Create a new release (usage: make release VERSION=1.0.1)
 	fi
 	@./scripts/release.sh $(VERSION)
 
+release-force: ## Force re-release (deletes existing tag)
+	@if [ -z "$(VERSION)" ]; then \
+	    echo "Error: VERSION is required"; \
+	    echo "Usage: make release-force VERSION=1.0.1"; \
+	    exit 1; \
+	fi
+	@./scripts/release.sh --force $(VERSION)
+
+delete-tag: ## Delete a release tag (usage: make delete-tag VERSION=1.0.1)
+	@if [ -z "$(VERSION)" ]; then \
+	    echo "Error: VERSION is required"; \
+	    echo "Usage: make delete-tag VERSION=1.0.1"; \
+	    exit 1; \
+	fi
+	@echo "Deleting tag v$(VERSION)..."
+	@git tag -d "v$(VERSION)" 2>/dev/null || echo "Local tag not found"
+	@git push origin --delete "v$(VERSION)" 2>/dev/null || echo "Remote tag not found"
+	@git fetch --prune --prune-tags
+	@echo "✅ Tag v$(VERSION) deleted"
+
 check-version: ## Check current version information
 	@echo "Git tags:"
 	@git tag -l "v*" | tail -5

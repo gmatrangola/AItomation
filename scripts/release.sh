@@ -1,13 +1,29 @@
 #!/bin/bash
 set -e
 
-if [ $# -eq 0 ]; then
-    echo "Usage: $0 <version>"
+FORCE=false
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -f|--force)
+            FORCE=true
+            shift
+            ;;
+        *)
+            VERSION=$1
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$VERSION" ]; then
+    echo "Usage: $0 [-f|--force] <version>"
     echo "Example: $0 1.0.1"
+    echo "Example: $0 --force 1.0.1  # Re-release existing tag"
     exit 1
 fi
 
-VERSION=$1
 TAG="v${VERSION}"
 
 echo "🚀 Preparing release ${VERSION}"
@@ -26,10 +42,21 @@ if [ -n "$(git status --porcelain)" ]; then
     exit 1
 fi
 
+# Refresh remote tags
+echo "🔄 Syncing tags with remote..."
+git fetch --prune --prune-tags
+
 # Check if tag already exists
 if git rev-parse "$TAG" >/dev/null 2>&1; then
-    echo "❌ Tag $TAG already exists"
-    exit 1
+    if [ "$FORCE" = false ]; then
+        echo "❌ Tag $TAG already exists"
+        echo "   Use --force to delete and recreate it"
+        exit 1
+    else
+        echo "⚠️  Tag $TAG exists, deleting..."
+        git tag -d "$TAG"
+        git push origin --delete "$TAG" 2>/dev/null || echo "   (Remote tag already deleted)"
+    fi
 fi
 
 # Check if changelog has entry for this version
@@ -62,8 +89,15 @@ sed -i "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/version-${VERSION}-blue/g" READ
 
 # Commit version changes
 git add aitomations/config.json README.md
-git commit -m "chore: bump version to ${VERSION}"
-git push origin main
+
+# Only commit if there are changes
+if ! git diff --staged --quiet; then
+    git commit -m "chore: bump version to ${VERSION}"
+    git push origin main
+    echo "✓ Version numbers updated and committed"
+else
+    echo "✓ Version numbers already up to date (no changes needed)"
+fi
 
 echo "🔍 Validating code..."
 make validate
@@ -72,7 +106,11 @@ echo "✅ All checks passed!"
 echo ""
 echo "Creating release ${VERSION}..."
 echo "  1. Tag: ${TAG}"
-echo "  2. This will trigger:"
+if [ "$FORCE" = true ]; then
+    echo "  2. ⚠️  FORCE mode: This will recreate the tag and re-trigger workflows"
+else
+    echo "  2. This will trigger:"
+fi
 echo "     - Docker image builds for all architectures"
 echo "     - Update to installation repository"
 echo "     - GitHub release creation"
