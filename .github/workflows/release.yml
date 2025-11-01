@@ -163,46 +163,10 @@ jobs:
           token: ${{ secrets.INSTALL_REPO_TOKEN }}
           path: install
 
-      - name: Sync files from source to install repo
+      - name: Sync files to install repository
         run: |
-          mkdir -p install/aitomations-creator
-          
-          # Copy files (version already updated in config.json)
-          cp source/aitomations/config.json install/aitomations-creator/config.json
-          cp source/docs/install/* install/aitomations-creator/
-          
-          # Generate CHANGELOG entry
           cd source
-          awk -v version="${{ needs.prepare-release.outputs.version }}" \
-              '/^## \['"$version"'\]/ { found=1; print; next } 
-               /^## \[/ { if (found) exit }
-               found { print }' \
-              aitomations/Changelog.md > ../install/aitomations-creator/new_entry.md
-          
-          cd ../install/aitomations-creator
-          
-          if [ ! -f CHANGELOG.md ]; then
-            echo "# Changelog" > CHANGELOG.md
-            echo "" >> CHANGELOG.md
-          fi
-          
-          if [ -s new_entry.md ]; then
-            echo -e "# Changelog\n" > CHANGELOG.new.md
-            cat new_entry.md >> CHANGELOG.new.md
-            echo "" >> CHANGELOG.new.md
-            tail -n +2 CHANGELOG.md >> CHANGELOG.new.md
-            mv CHANGELOG.new.md CHANGELOG.md
-          fi
-          
-          rm -f new_entry.md
-          
-          # Copy icons
-          if [ -f ../../source/docs/install/icon.png ]; then
-            cp ../../source/docs/install/icon.png icon.png
-          fi
-          if [ -f ../../source/docs/install/logo.png ]; then
-            cp ../../source/docs/install/logo.png logo.png
-          fi
+          ./scripts/sync-install-repo.sh "$(pwd)" "../install" "${{ needs.prepare-release.outputs.version }}"
 
       - name: Commit and push changes
         run: |
@@ -217,6 +181,8 @@ jobs:
                        -m "Source commit: ${{ github.sha }}" \
                        -m "Release tag: v${{ needs.prepare-release.outputs.version }}"
             git push origin main
+          else
+            echo "No changes to commit"
           fi
 
   create-github-release:

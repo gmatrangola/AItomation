@@ -405,3 +405,18 @@ check-version: ## Check current version information
 	@echo ""
 	@echo "Latest CHANGELOG entry:"
 	@grep -m 1 "^## \[" aitomations/Changelog.md || echo "Not found"
+
+sync-install: ## Sync files to install repo locally (usage: make sync-install VERSION=1.0.0)
+	@if [ -z "$(VERSION)" ]; then \
+	    echo "Error: VERSION is required"; \
+	    echo "Usage: make sync-install VERSION=1.0.0"; \
+	    exit 1; \
+	fi
+	@if [ ! -d "../aitomation-install" ]; then \
+	    echo "Cloning install repository..."; \
+	    git clone https://github.com/gmatrangola/aitomation-install.git ../aitomation-install; \
+	fi
+	@./scripts/sync-install-repo.sh "$(PWD)" "../aitomation-install" "$(VERSION)"
+	@echo ""
+	@echo "Files synced to ../aitomation-install"
+	@echo "Review changes and commit manually"
