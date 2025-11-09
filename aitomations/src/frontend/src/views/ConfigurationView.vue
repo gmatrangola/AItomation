@@ -18,10 +18,7 @@
                 class="mb-4"
                 @click:close="showSetupRequired = false"
             >
-                <v-alert-title>
-                    <v-icon start>mdi-information</v-icon>
-                    Configuration Required
-                </v-alert-title>
+                <v-alert-title>Configuration Required</v-alert-title>
                 Please configure your AI provider before using AItomations Creator.
             </v-alert>
 
@@ -53,7 +50,6 @@
                                 <v-text-field
                                     v-model="config.gemini_api_key"
                                     label="Gemini API Key"
-                                    type="password"
                                     :rules="geminiRules"
                                     hint="Get your API key from https://makersuite.google.com/app/apikey"
                                     persistent-hint
@@ -234,7 +230,7 @@
 
                 <!-- Action Buttons -->
                 <div class="d-flex justify-end gap-2 mt-4">
-                    <v-btn variant="text" @click="loadConfiguration">
+                    <v-btn variant="text" @click="nextTick(loadConfiguration)">
                         <v-icon start>mdi-refresh</v-icon>
                         Reset
                     </v-btn>

@@ -224,13 +224,22 @@ def health_check():
 def save_config():
     """Save configuration to options.json"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
+        existing = get_options()
 
-        # Validate configuration
+        # Preserve any masked secret fields containing 'key'
+        for k, v in list(data.items()):
+            if "key" in k.lower() and v == "***":
+                # Keep existing real value if present
+                if existing.get(k):
+                    data[k] = existing[k]
+                else:
+                    # No existing value; treat as empty
+                    data[k] = ""
+
         if data.get("llm_provider") not in ["gemini", "ollama"]:
             return jsonify({"error": "Invalid LLM provider"}), 400
 
-        # Write to options file
         with open(OPTIONS_FILE, "w") as f:
             json.dump(data, f, indent=2)
 
@@ -244,7 +253,13 @@ def save_config():
 @api_blueprint.route("/config")
 def get_config():
     options = get_options()
-    safe_config = {k: ("***" if "key" in k.lower() and v else v) for k, v in options.items()}
+    safe_config: dict[str, object] = {}
+    for k, v in options.items():
+        if "key" in k.lower() and v:
+            safe_config[k] = "***"
+            safe_config[f"{k}_present"] = True
+        else:
+            safe_config[k] = v
     return jsonify(safe_config)
 
 

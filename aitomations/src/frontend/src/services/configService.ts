@@ -20,67 +20,32 @@ export class ConfigService {
      */
     async checkConfiguration(): Promise<ConfigValidationResult> {
         try {
-            const response = await fetch('api/config', { headers: { 'Cache-Control': 'no-cache' } });
-
-            if (response.status === 401) {
-                return {
-                    isValid: false,
-                    error: 'Unauthorized (401). This may be calling Home Assistant core /api/config instead of the add-on. Refresh the page or verify ingress path.',
-                };
-            }
-
+            const response = await fetch('./api/config', { headers: { 'Cache-Control': 'no-cache' } });
             if (!response.ok) {
-                return {
-                    isValid: false,
-                    error: 'Unable to load configuration. Please configure your AI provider.',
-                };
+                return { isValid: false, error: 'Unable to load configuration.' };
             }
-
             const config = await response.json();
 
-            // Check if LLM provider is configured
             if (!config.llm_provider) {
-                return {
-                    isValid: false,
-                    error: 'No AI provider selected. Please configure your AI provider to continue.',
-                    config,
-                };
+                return { isValid: false, error: 'No AI provider selected.', config };
             }
 
-            // Check Gemini configuration
             if (config.llm_provider === 'gemini') {
-                if (!config.gemini_api_key || config.gemini_api_key.trim() === '' || config.gemini_api_key === '***') {
-                    return {
-                        isValid: false,
-                        error: 'Gemini API key is missing. Please add your API key in the configuration.',
-                        config,
-                    };
+                if (!config.gemini_api_key_present) {
+                    return { isValid: false, error: 'Gemini API key is missing.', config };
                 }
             }
 
-            // Check Ollama configuration
             if (config.llm_provider === 'ollama') {
                 if (!config.ollama_api_url || config.ollama_api_url.trim() === '') {
-                    return {
-                        isValid: false,
-                        error: 'Ollama API URL is missing. Please configure your Ollama endpoint.',
-                        config,
-                    };
+                    return { isValid: false, error: 'Ollama API URL is missing.', config };
                 }
             }
 
-            // Configuration is valid
-            return {
-                isValid: true,
-                error: null,
-                config,
-            };
-        } catch (error) {
-            console.error('[ConfigService] Failed to check configuration:', error);
-            return {
-                isValid: false,
-                error: 'Failed to verify configuration. Please check your settings.',
-            };
+            return { isValid: true, error: null, config };
+        } catch (e) {
+            console.error('[ConfigService] checkConfiguration error', e);
+            return { isValid: false, error: 'Failed to verify configuration.' };
         }
     }
 
@@ -111,28 +76,25 @@ export class ConfigService {
      */
     async saveConfiguration(config: ConfigValidationResult['config']): Promise<{ success: boolean; error?: string }> {
         try {
-            const response = await fetch('api/config', {
+            // Remove masked secrets so backend can preserve existing
+            const payload = { ...config };
+            if (payload?.gemini_api_key === '***') {
+                delete payload.gemini_api_key;
+            }
+
+            const response = await fetch('./api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(config),
+                body: JSON.stringify(payload),
             });
-            if (response.status === 401) {
-                return { success: false, error: 'Unauthorized (401). Ingress path resolution issue.' };
-            }
             if (!response.ok) {
-                const error = await response.json().catch(() => ({}));
-                return {
-                    success: false,
-                    error: error.error || 'Failed to save configuration',
-                };
+                const err = await response.json().catch(() => ({}));
+                return { success: false, error: err.error || 'Failed to save configuration' };
             }
             return { success: true };
-        } catch (error) {
-            console.error('[ConfigService] Failed to save configuration:', error);
-            return {
-                success: false,
-                error: error instanceof Error ? error.message : 'Failed to save configuration',
-            };
+        } catch (e) {
+            console.error('[ConfigService] saveConfiguration error', e);
+            return { success: false, error: e instanceof Error ? e.message : 'Failed to save configuration' };
         }
     }
 }
