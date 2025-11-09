@@ -13,17 +13,6 @@ export interface ConfigValidationResult {
 }
 
 export class ConfigService {
-    // Derive API base (supports Home Assistant ingress and local dev)
-    private getApiUrl(path: string): string {
-        // If running under ingress (/api/hassio_ingress/<token>/...), keep it relative
-        const ingressMatch = window.location.pathname.match(/^\/api\/hassio_ingress\/[^/]+/);
-        if (ingressMatch) {
-            return `${path.startsWith('/') ? '.' + path : path}`; // ensure relative, avoid jumping to HA core /api
-        }
-        // Dev / standalone: prepend leading slash
-        return path.startsWith('/') ? path : `/${path}`;
-    }
-
     /**
      * Check if the LLM configuration is valid
      * Designed to work within Home Assistant iframe context
@@ -31,8 +20,7 @@ export class ConfigService {
      */
     async checkConfiguration(): Promise<ConfigValidationResult> {
         try {
-            const url = this.getApiUrl('api/config');
-            const response = await fetch(url, { headers: { 'Cache-Control': 'no-cache' } });
+            const response = await fetch('api/config', { headers: { 'Cache-Control': 'no-cache' } });
 
             if (response.status === 401) {
                 return {
@@ -102,8 +90,7 @@ export class ConfigService {
      */
     async loadConfiguration() {
         try {
-            const url = this.getApiUrl('api/config');
-            const response = await fetch(url);
+            const response = await fetch('api/config');
             if (response.status === 401) {
                 throw new Error('Unauthorized (401) – likely wrong base path (core API).');
             }
@@ -124,8 +111,7 @@ export class ConfigService {
      */
     async saveConfiguration(config: ConfigValidationResult['config']): Promise<{ success: boolean; error?: string }> {
         try {
-            const url = this.getApiUrl('api/config');
-            const response = await fetch(url, {
+            const response = await fetch('api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config),
