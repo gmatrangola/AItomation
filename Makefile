@@ -264,10 +264,32 @@ logs: ## Tail add-on logs on target instance
 restart: ## Restart add-on on target instance
 	@echo "Restarting $(ADDON_FULL_SLUG) add-on..."
 	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
-	    "docker restart addon_$(ADDON_FULL_SLUG) 2>/dev/null || \
+	    "docker stop addon_$(ADDON_FULL_SLUG) 2>/dev/null && \
+	     docker rm addon_$(ADDON_FULL_SLUG) 2>/dev/null && \
+	     echo 'Container removed, supervisor will rebuild on restart' || \
 	     ha addons restart $(ADDON_FULL_SLUG)"
 	@echo "✓ Add-on restart command sent"
 	@echo "Wait a few seconds, then check: make status TARGET=$(TARGET)"
+
+rebuild: ## Force rebuild add-on container on target
+	@echo "Forcing rebuild of $(ADDON_FULL_SLUG)..."
+	@echo "Stopping container..."
+	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
+	    "docker stop addon_$(ADDON_FULL_SLUG) 2>&1 || echo 'Container not running'" && \
+	echo "Removing container..." && \
+	ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
+	    "docker rm addon_$(ADDON_FULL_SLUG) 2>&1 || echo 'Container already removed'" && \
+	echo "Pruning Docker system..." && \
+	ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
+	    "docker system prune -f 2>&1" || true
+	@echo "✓ Container removed"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Go to Home Assistant UI: Settings > Add-ons > AItomations Creator"
+	@echo "  2. Click START"
+	@echo "  3. This will force a fresh build from deployed files"
+	@echo ""
+	@echo "To monitor the rebuild, run: make logs TARGET=$(TARGET)"
 
 status: ## Check add-on status on target instance
 	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
@@ -292,14 +314,18 @@ version: ## Show version info
 	@pip3 --version
 
 # New helper target for full deploy cycle
-deploy-full: deploy restart ## Deploy and restart in one command
+deploy-full: deploy rebuild ## Deploy and force rebuild in one command
 	@echo ""
-	@echo "Waiting for add-on to start..."
-	@sleep 5
-	@$(MAKE) status TARGET=$(TARGET)
+	@echo "Waiting 10 seconds for rebuild to start..."
+	@sleep 10
 	@echo ""
 	@echo "✓ Deployment complete!"
-	@echo "Remember to hard refresh your browser!"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Go to Settings > Add-ons > AItomations Creator"
+	@echo "  2. Click START"
+	@echo "  3. Wait for it to boot (check logs)"
+	@echo "  4. Hard refresh browser (Cmd+Shift+R or Ctrl+Shift+R)"
 
 # Verify deployment
 verify: ## Verify deployment files on target

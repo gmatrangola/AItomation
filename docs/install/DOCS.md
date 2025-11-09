@@ -47,6 +47,24 @@ Timeout for API requests in seconds. Default: 120
 
 Range: 30-600 seconds
 
+### `system_prompt_template` (optional)
+
+Custom Jinja2 template for the system prompt. Leave empty to use default.
+
+Available variables:
+- `{{ ha_context }}` - Full HA context
+- `{{ user_request }}` - User's request
+- `{{ num_entities }}` - Entity count
+- `{{ num_services }}` - Service count
+- `{{ num_automations }}` - Automation count
+
+Example:
+```jinja2
+Generate automation for: {{ user_request }}
+Entities available: {{ num_entities }}
+Format: YAML with explanation
+```
+
 ## Usage Guide
 
 ### Creating Your First Automation

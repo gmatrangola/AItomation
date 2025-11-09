@@ -1,13 +1,31 @@
 <template>
     <v-app>
+        <v-app-bar color="primary" density="compact">
+            <v-app-bar-title class="d-flex align-center">
+                <v-icon class="mr-2">mdi-robot</v-icon>
+                AItomations Creator
+            </v-app-bar-title>
+            <v-spacer />
+            <v-btn :to="{ name: 'Dashboard' }" :variant="$route.name === 'Dashboard' ? 'flat' : 'text'" icon>
+                <v-icon>mdi-chat</v-icon>
+            </v-btn>
+            <v-btn :to="{ name: 'Configuration' }" :variant="$route.name === 'Configuration' ? 'flat' : 'text'" icon>
+                <v-icon>mdi-cog</v-icon>
+            </v-btn>
+        </v-app-bar>
+
         <v-main class="main-container">
-            <Dashboard />
+            <router-view v-slot="{ Component, route }">
+                <transition name="fade" mode="out-in">
+                    <component :is="Component" :key="route.path" />
+                </transition>
+            </router-view>
         </v-main>
     </v-app>
 </template>
 
 <script setup lang="ts">
-import Dashboard from '@/views/Dashboard.vue';
+// Component logic for iframe context within Home Assistant
 </script>
 
 <style>
@@ -50,6 +68,17 @@ body,
 .main-container .v-main__wrap {
     height: 100vh;
     overflow: hidden;
+}
+
+/* Fade transition for route changes within iframe */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 
 /* Vuetify component overrides for HA theme */
