@@ -3,14 +3,15 @@ import os
 import re
 import time
 import traceback
-from typing import Any  # <- only Any is needed now
+from typing import Any
 
 import requests
 import yaml
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
-from jinja2 import Environment, FileSystemLoader, Template, TemplateError
 
+from api.context import get_ha_context
 from api.errors import APIError
+from api.prompting import render_system_prompt
 from llm.gemini import GeminiProvider
 from llm.ollama import OllamaProvider
 
@@ -26,261 +27,30 @@ HA_HEADERS = {
 OPTIONS_FILE = "/data/options.json"
 AITOMATIONS_METADATA_KEY = "aitomations_metadata"
 
-# Setup Jinja2 for prompt templates
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "prompts")
-jinja_env = Environment(loader=FileSystemLoader(PROMPTS_DIR), autoescape=False)
-
-
-# --- Helper to log template directory (called lazily) ---
-_prompts_dir_logged = False
-
-
-def _log_prompts_dir() -> None:
-    """Log prompts directory info - only called when needed."""
-    global _prompts_dir_logged
-    if not _prompts_dir_logged:
-        current_app.logger.info(f"📂 PROMPTS_DIR resolved to: {PROMPTS_DIR}")
-        current_app.logger.info(f"📂 Directory exists: {os.path.exists(PROMPTS_DIR)}")
-        if os.path.exists(PROMPTS_DIR):
-            current_app.logger.info(f"📂 Files in directory: {os.listdir(PROMPTS_DIR)}")
-        else:
-            current_app.logger.warning("⚠️  PROMPTS_DIR does not exist!")
-            # Log the absolute path to help debug
-            abs_path = os.path.abspath(PROMPTS_DIR)
-            current_app.logger.warning(f"⚠️  Absolute path: {abs_path}")
-            # List parent directory
-            parent_dir = os.path.dirname(PROMPTS_DIR)
-            if os.path.exists(parent_dir):
-                current_app.logger.info(f"📂 Parent directory contents: {os.listdir(parent_dir)}")
-        _prompts_dir_logged = True
 
 
 # --- Helper Functions ---
-def get_options():
+def get_options() -> dict[str, Any]:
+    """Load add-on options from the options.json file."""
     try:
-        with open(OPTIONS_FILE) as f:
-            return json.load(f)
+        with open(OPTIONS_FILE) as file:
+            data = json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+    # Ensure we always return a dict[str, Any]
+    if isinstance(data, dict):
+        return data
+    return {}
 
 
 def get_llm_provider(provider_name: str):
     if provider_name == "gemini":
         return GeminiProvider()
-    elif provider_name == "ollama":
+    if provider_name == "ollama":
         return OllamaProvider()
-    else:
-        raise ValueError(f"Unknown LLM provider: {provider_name}")
-
-
-def render_system_prompt(ha_context: dict, user_request: str, chat_history: list[dict] | None = None) -> str:
-    """
-    Render the system prompt using Jinja2 template.
-
-    Args:
-        ha_context: Home Assistant context (entities, services, automations, etc.)
-        user_request: Current user request text
-        chat_history: Recent messages (already truncated)
-
-    Returns:
-        Rendered prompt string
-    """
-    from flask import current_app
-
-    global _prompts_dir_logged
-    _log_prompts_dir()
-
-    options = get_options()
-    custom_template = (options.get("system_prompt_template") or "").strip()
-    chat_history = chat_history or []
-
-    try:
-        if custom_template:
-            current_app.logger.info("📝 Using custom system prompt template from options")
-            template = Template(custom_template)
-        else:
-            current_app.logger.info("📝 Using default_system_prompt.jinja2")
-            template = jinja_env.get_template("default_system_prompt.jinja2")
-
-        rendered = template.render(
-            ha_context=ha_context,
-            user_request=user_request,
-            chat_history=chat_history,
-        )
-
-        current_app.logger.debug("=== Rendered system prompt start ===")
-        current_app.logger.debug(rendered)
-        current_app.logger.debug("=== Rendered system prompt end ===")
-        current_app.logger.info(f"📊 Prompt length: {len(rendered)} characters")
-
-        return rendered
-    except TemplateError as e:
-        current_app.logger.error(f"❌ Template rendering error: {e}", exc_info=True)
-        # Fallback: minimal but safe prompt
-        return (
-            "You are a Home Assistant automation assistant.\n\n"
-            f"Context: {json.dumps(ha_context, indent=2)}\n\n"
-            f"Chat History: {json.dumps(chat_history, indent=2)}\n\n"
-            f"User Request: {user_request}\n\n"
-            "Generate a YAML automation with an explanation."
-        )
-
-
-def _get_ha_context() -> tuple[dict, str]:
-    """
-    Build a compact but rich Home Assistant context for the LLM.
-
-    Returns:
-        (ha_context, summary_string)
-    """
-    current_app.logger.info("🌐 Fetching Home Assistant context")
-
-    def _ha_get(path: str) -> Any:
-        url = f"{HA_API_URL}{path}"
-        resp = requests.get(url, headers=HA_HEADERS, timeout=10)
-        resp.raise_for_status()
-        return resp.json()
-
-    context: dict[str, Any] = {}
-
-    # --- Config (timezone, units) ---
-    try:
-        config = _ha_get("/config")
-        context["config"] = {
-            "time_zone": config.get("time_zone"),
-            "unit_system": config.get("unit_system", {}).get("name"),
-        }
-    except Exception as e:
-        current_app.logger.warning(f"⚠️ Failed to fetch /config: {e}")
-        context["config"] = {}
-
-    # --- Entities (compact) ---
-    try:
-        states = _ha_get("/states")
-        entities: list[dict[str, Any]] = []
-        helpers: dict[str, list[str]] = {
-            "input_boolean": [],
-            "input_datetime": [],
-            "input_number": [],
-            "other": [],
-        }
-        scenes: list[str] = []
-
-        for s in states:
-            entity_id = s.get("entity_id")
-            attrs = s.get("attributes", {})
-            name = attrs.get("friendly_name", entity_id)
-            if not entity_id:
-                continue
-
-            domain = entity_id.split(".")[0]
-
-            entities.append(
-                {
-                    "id": entity_id,
-                    "name": name,
-                    "domain": domain,
-                    # area_id is helpful for grouping; may be None
-                    "area_id": attrs.get("area_id"),
-                }
-            )
-
-            # classify helpers & scenes
-            if domain == "input_boolean":
-                helpers["input_boolean"].append(entity_id)
-            elif domain == "input_datetime":
-                helpers["input_datetime"].append(entity_id)
-            elif domain == "input_number":
-                helpers["input_number"].append(entity_id)
-            elif domain.startswith("input_"):
-                helpers["other"].append(entity_id)
-            elif domain == "scene":
-                scenes.append(entity_id)
-
-        context["entities"] = entities
-        context["helpers"] = helpers
-        context["scenes"] = scenes
-
-    except Exception as e:
-        current_app.logger.error(f"❌ Failed to fetch /states: {e}", exc_info=True)
-        context.setdefault("entities", [])
-        context.setdefault("helpers", {})
-        context.setdefault("scenes", [])
-
-    # --- Areas (via entity attributes only, summarized) ---
-    # We don't use the registries here (keeps it simple and avoids WS).
-    # Instead, infer areas from entity attributes if present.
-    areas_by_id: dict[str, dict[str, Any]] = {}
-    try:
-        for ent in context.get("entities", []):
-            area_id = ent.get("area_id")
-            if not area_id:
-                continue
-            area = areas_by_id.setdefault(
-                area_id,
-                {
-                    "id": area_id,
-                    "name": area_id,  # HA often has a nicer name in registries; fallback to id
-                    "entities_by_domain": {},
-                },
-            )
-            domain = ent.get("domain", "unknown")
-            area["entities_by_domain"].setdefault(domain, []).append(ent["id"])
-
-        # Convert to list for the template
-        context["areas"] = list(areas_by_id.values())
-    except Exception as e:
-        current_app.logger.warning(f"⚠️ Failed to build areas summary: {e}")
-        context["areas"] = []
-
-    # --- Services (flat list of domain.service strings) ---
-    try:
-        services_raw = _ha_get("/services")
-        services: list[str] = []
-        for svc_domain in services_raw:
-            domain = svc_domain.get("domain")
-            for s in svc_domain.get("services", {}).keys():
-                services.append(f"{domain}.{s}")
-        context["services"] = services
-    except Exception as e:
-        current_app.logger.error(f"❌ Failed to fetch /services: {e}", exc_info=True)
-        context.setdefault("services", [])
-
-    # --- Automations (compact, with optional summary) ---
-    try:
-        automations_raw = _ha_get("/states")
-        # filter states for automation domain only
-        autos: list[dict[str, Any]] = []
-        for s in automations_raw:
-            entity_id = s.get("entity_id")
-            if not entity_id or not entity_id.startswith("automation."):
-                continue
-            attrs = s.get("attributes", {})
-            alias = attrs.get("friendly_name", entity_id)
-            # simple, compact summary if available
-            summary = attrs.get("description") or attrs.get("summary")
-            autos.append(
-                {
-                    "id": entity_id,
-                    "name": alias,
-                    "summary": summary,
-                }
-            )
-        context["automations"] = autos
-    except Exception as e:
-        current_app.logger.error(f"❌ Failed to fetch automations summary: {e}", exc_info=True)
-        context.setdefault("automations", [])
-
-    # --- Build a small textual summary for logging / progress ---
-    summary = (
-        f"entities={len(context.get('entities', []))}, "
-        f"services={len(context.get('services', []))}, "
-        f"automations={len(context.get('automations', []))}, "
-        f"areas={len(context.get('areas', []))}"
-    )
-    current_app.logger.info(f"✅ HA context ready: {summary}")
-
-    return context, summary
+    raise ValueError(f"Unknown LLM provider: {provider_name}")
 
 
 # --- API Endpoints ---
@@ -524,7 +294,7 @@ def generate_automation_stream():
 
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'gathering_context'})}\n\n"
 
-            ha_context, context_summary = _get_ha_context()
+            ha_context, context_summary = get_ha_context()
 
             context_stats = {
                 "type": "progress",
@@ -539,11 +309,9 @@ def generate_automation_stream():
             }
             yield f"data: {json.dumps(context_stats)}\n\n"
 
-            # --- NEW: pass trimmed history into prompt rendering ---
             current_app.logger.info("🔨 Rendering system prompt from template...")
-            # pass both full_context (current user request) and trimmed_history
             creation_prompt = render_system_prompt(
-                ha_context,
+                ha_context=ha_context,
                 user_request=full_context,
                 chat_history=trimmed_history,
             )
@@ -674,25 +442,24 @@ def preview_prompt_template():
         if not template_str:
             return jsonify({"error": "No template provided"}), 400
 
-        # Fetch real Home Assistant context
         try:
-            ha_context, _ = _get_ha_context()
-        except Exception as e:
-            return jsonify({"error": f"Failed to fetch Home Assistant data: {str(e)}"}), 500
+            ha_context, _ = get_ha_context()
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Failed to fetch Home Assistant data: {exc}"}), 500
 
         sample_request = "Turn on the living room lights when motion is detected after sunset"
-        sample_history: list[dict[str, str]] = []  # or a small hard-coded sample if you prefer
+        sample_history: list[dict[str, Any]] = []
+
+        from jinja2 import Template
 
         template = Template(template_str)
         rendered = template.render(
             ha_context=ha_context,
             user_request=sample_request,
-            chat_history=sample_history,  # <-- add this
+            chat_history=sample_history,
         )
 
         return jsonify({"rendered": rendered})
-    except TemplateError as e:
-        return jsonify({"error": f"Template error: {str(e)}"}), 400
-    except Exception as e:
-        current_app.logger.error(f"❌ Error previewing template: {e}")
-        return jsonify({"error": str(e)}), 500
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.error(f"❌ Error previewing template: {exc}")
+        return jsonify({"error": str(exc)}), 500
