@@ -92,6 +92,11 @@ body,
     border: 1px solid var(--ha-border);
 }
 
+.v-textarea .v-field__input {
+    align-items: stretch;
+    max-height: none;
+}
+
 .v-textarea textarea {
     color: var(--ha-primary-text) !important;
 }

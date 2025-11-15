@@ -177,14 +177,13 @@
                             ? 'e.g., Turn on the porch light at sunset...'
                             : 'Refine or ask for changes...'
                     "
-                    rows="1"
                     auto-grow
-                    max-rows="3"
-                    :disabled="isGenerating"
+                    max-rows="8"
                     variant="outlined"
                     density="compact"
                     hide-details
-                    class="compact-input"
+                    class="compact-input growing-input"
+                    :disabled="isGenerating"
                     @keydown.enter.exact.prevent="handleSend"
                     @keydown.enter.shift.exact="handleNewLine"
                 >
@@ -606,10 +605,19 @@ defineExpose({
     padding: 0.5rem 1rem 0.75rem;
 }
 
+/* NEW: allow v-textarea to grow with content */
 .compact-input {
     font-size: 0.875rem;
+    max-height: none;
 }
 
+.compact-input :deep(textarea) {
+    /* let Vuetify auto-grow work; allow scroll when reaching max-rows */
+    overflow-y: auto;
+    resize: none;
+}
+
+/* keep existing field styling */
 .compact-input :deep(.v-field) {
     border-radius: 20px;
     padding: 2px 10px;
@@ -618,10 +626,20 @@ defineExpose({
 .compact-input :deep(.v-field__input) {
     padding: 6px 0;
     min-height: 32px;
+
+    /* ADD THESE LINES */
+    max-height: none;
+    align-items: stretch;
 }
 
 .compact-input :deep(.v-field__append-inner) {
     padding-top: 0;
     align-items: center;
+}
+
+/* you can keep or remove this, but it must not force hidden after our override */
+.growing-input :deep(textarea) {
+    /* remove overflow-y: hidden; or let compact-input override it */
+    /* overflow-y: hidden; */
 }
 </style>
