@@ -3,6 +3,7 @@ import os
 import re
 import time
 import traceback
+from typing import Any  # <- only Any is needed now
 
 import requests
 import yaml
@@ -72,146 +73,214 @@ def get_llm_provider(provider_name: str):
         raise ValueError(f"Unknown LLM provider: {provider_name}")
 
 
-def render_system_prompt(ha_context: dict, user_request: str) -> str:
+def render_system_prompt(ha_context: dict, user_request: str, chat_history: list[dict] | None = None) -> str:
     """
     Render the system prompt using Jinja2 template.
 
     Args:
-        ha_context: Home Assistant context (entities, services, automations)
-        user_request: User's automation request
+        ha_context: Home Assistant context (entities, services, automations, etc.)
+        user_request: Current user request text
+        chat_history: Recent messages (already truncated)
 
     Returns:
         Rendered prompt string
     """
-    # Log directory info on first use
+    from flask import current_app
+
+    global _prompts_dir_logged
     _log_prompts_dir()
 
     options = get_options()
-    custom_template = options.get("system_prompt_template", "").strip()
+    custom_template = (options.get("system_prompt_template") or "").strip()
+    chat_history = chat_history or []
 
     try:
         if custom_template:
-            # Use custom template from config
-            current_app.logger.info("📝 Using custom template from config")
+            current_app.logger.info("📝 Using custom system prompt template from options")
             template = Template(custom_template)
         else:
-            # Use default template file
-            current_app.logger.info("📝 Using default template file")
-            current_app.logger.info("📝 Loading template: default_system_prompt.jinja2")
+            current_app.logger.info("📝 Using default_system_prompt.jinja2")
             template = jinja_env.get_template("default_system_prompt.jinja2")
 
-        rendered_prompt = template.render(
+        rendered = template.render(
             ha_context=ha_context,
             user_request=user_request,
-            automations=ha_context.get("automations", []),
+            chat_history=chat_history,
         )
 
-        # Log the fully rendered prompt
-        current_app.logger.info("=" * 80)
-        current_app.logger.info("🎯 FULLY RENDERED SYSTEM PROMPT:")
-        current_app.logger.info("=" * 80)
-        current_app.logger.info(rendered_prompt)
-        current_app.logger.info("=" * 80)
-        current_app.logger.info(f"📊 Prompt length: {len(rendered_prompt)} characters")
-        current_app.logger.info("=" * 80)
+        current_app.logger.debug("=== Rendered system prompt start ===")
+        current_app.logger.debug(rendered)
+        current_app.logger.debug("=== Rendered system prompt end ===")
+        current_app.logger.info(f"📊 Prompt length: {len(rendered)} characters")
 
-        return rendered_prompt
-
+        return rendered
     except TemplateError as e:
-        current_app.logger.error(f"❌ Template rendering error: {e}")
-        current_app.logger.error("❌ Template error traceback:", exc_info=True)
-        # Fallback to a simple format if template fails
-        return f"""You are a Home Assistant automation assistant.
+        current_app.logger.error(f"❌ Template rendering error: {e}", exc_info=True)
+        # Fallback: minimal but safe prompt
+        return (
+            "You are a Home Assistant automation assistant.\n\n"
+            f"Context: {json.dumps(ha_context, indent=2)}\n\n"
+            f"Chat History: {json.dumps(chat_history, indent=2)}\n\n"
+            f"User Request: {user_request}\n\n"
+            "Generate a YAML automation with an explanation."
+        )
 
-Context: {json.dumps(ha_context, indent=2)}
 
-User Request: {user_request}
+def _get_ha_context() -> tuple[dict, str]:
+    """
+    Build a compact but rich Home Assistant context for the LLM.
 
-Generate a YAML automation with an explanation."""
+    Returns:
+        (ha_context, summary_string)
+    """
+    current_app.logger.info("🌐 Fetching Home Assistant context")
 
+    def _ha_get(path: str) -> Any:
+        url = f"{HA_API_URL}{path}"
+        resp = requests.get(url, headers=HA_HEADERS, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
 
-def _get_ha_context():
-    if not SUPERVISOR_TOKEN:
-        raise ConnectionError("Supervisor token not found.")
+    context: dict[str, Any] = {}
+
+    # --- Config (timezone, units) ---
     try:
-        current_app.logger.info("🔍 Fetching Home Assistant states...")
-        states_response = requests.get(f"{HA_API_URL}/states", headers=HA_HEADERS, timeout=10)
+        config = _ha_get("/config")
+        context["config"] = {
+            "time_zone": config.get("time_zone"),
+            "unit_system": config.get("unit_system", {}).get("name"),
+        }
+    except Exception as e:
+        current_app.logger.warning(f"⚠️ Failed to fetch /config: {e}")
+        context["config"] = {}
 
-        states_response.raise_for_status()
-        all_states = states_response.json()
+    # --- Entities (compact) ---
+    try:
+        states = _ha_get("/states")
+        entities: list[dict[str, Any]] = []
+        helpers: dict[str, list[str]] = {
+            "input_boolean": [],
+            "input_datetime": [],
+            "input_number": [],
+            "other": [],
+        }
+        scenes: list[str] = []
 
-        current_app.logger.info(f"✅ all_states = {json.dumps(all_states, indent=2)}")
+        for s in states:
+            entity_id = s.get("entity_id")
+            attrs = s.get("attributes", {})
+            name = attrs.get("friendly_name", entity_id)
+            if not entity_id:
+                continue
 
-        # Log the raw response
-        current_app.logger.info("=" * 80)
-        current_app.logger.info("🏠 RAW HOME ASSISTANT STATES RESPONSE:")
-        current_app.logger.info("=" * 80)
-        current_app.logger.info(f"📊 Total entities received: {len(all_states)}")
-        current_app.logger.info("-" * 80)
+            domain = entity_id.split(".")[0]
 
-        # Log first 3 entities as examples
-        current_app.logger.info("📋 Sample entities (first 3):")
-        for i, entity in enumerate(all_states[:3], 1):
-            current_app.logger.info(f"\n  Entity {i}:")
-            current_app.logger.info(f"    entity_id: {entity.get('entity_id')}")
-            current_app.logger.info(f"    state: {entity.get('state')}")
-            current_app.logger.info(f"    attributes: {json.dumps(entity.get('attributes', {}), indent=6)}")
+            entities.append(
+                {
+                    "id": entity_id,
+                    "name": name,
+                    "domain": domain,
+                    # area_id is helpful for grouping; may be None
+                    "area_id": attrs.get("area_id"),
+                }
+            )
 
-        current_app.logger.info("=" * 80)
+            # classify helpers & scenes
+            if domain == "input_boolean":
+                helpers["input_boolean"].append(entity_id)
+            elif domain == "input_datetime":
+                helpers["input_datetime"].append(entity_id)
+            elif domain == "input_number":
+                helpers["input_number"].append(entity_id)
+            elif domain.startswith("input_"):
+                helpers["other"].append(entity_id)
+            elif domain == "scene":
+                scenes.append(entity_id)
 
-        # Log full response to file for detailed inspection
-        log_file = "/data/states_response.json"
-        try:
-            with open(log_file, "w") as f:
-                json.dump(all_states, f, indent=2)
-            current_app.logger.info(f"💾 Full states response saved to: {log_file}")
-        except Exception as log_error:
-            current_app.logger.warning(f"⚠️  Could not save states to file: {log_error}")
+        context["entities"] = entities
+        context["helpers"] = helpers
+        context["scenes"] = scenes
 
-        # Process entities
-        entities = [
-            {"id": e["entity_id"], "name": e["attributes"].get("friendly_name", e["entity_id"])} for e in all_states
-        ]
+    except Exception as e:
+        current_app.logger.error(f"❌ Failed to fetch /states: {e}", exc_info=True)
+        context.setdefault("entities", [])
+        context.setdefault("helpers", {})
+        context.setdefault("scenes", [])
 
-        automations = [
-            {"id": s["entity_id"], "name": s["attributes"].get("friendly_name", s["entity_id"])}
-            for s in all_states
-            if s["entity_id"].startswith("automation.")
-        ]
+    # --- Areas (via entity attributes only, summarized) ---
+    # We don't use the registries here (keeps it simple and avoids WS).
+    # Instead, infer areas from entity attributes if present.
+    areas_by_id: dict[str, dict[str, Any]] = {}
+    try:
+        for ent in context.get("entities", []):
+            area_id = ent.get("area_id")
+            if not area_id:
+                continue
+            area = areas_by_id.setdefault(
+                area_id,
+                {
+                    "id": area_id,
+                    "name": area_id,  # HA often has a nicer name in registries; fallback to id
+                    "entities_by_domain": {},
+                },
+            )
+            domain = ent.get("domain", "unknown")
+            area["entities_by_domain"].setdefault(domain, []).append(ent["id"])
 
-        current_app.logger.info(f"✅ Processed {len(entities)} entities")
-        current_app.logger.info(f"🤖 Found {len(automations)} automations")
+        # Convert to list for the template
+        context["areas"] = list(areas_by_id.values())
+    except Exception as e:
+        current_app.logger.warning(f"⚠️ Failed to build areas summary: {e}")
+        context["areas"] = []
 
-        # Fetch services
-        current_app.logger.info("🔍 Fetching Home Assistant services...")
-        services_response = requests.get(f"{HA_API_URL}/services", headers=HA_HEADERS, timeout=10)
-        services_response.raise_for_status()
+    # --- Services (flat list of domain.service strings) ---
+    try:
+        services_raw = _ha_get("/services")
+        services: list[str] = []
+        for svc_domain in services_raw:
+            domain = svc_domain.get("domain")
+            for s in svc_domain.get("services", {}).keys():
+                services.append(f"{domain}.{s}")
+        context["services"] = services
+    except Exception as e:
+        current_app.logger.error(f"❌ Failed to fetch /services: {e}", exc_info=True)
+        context.setdefault("services", [])
 
-        services_data = services_response.json()
-        services = [f"{domain['domain']}.{service}" for domain in services_data for service in domain["services"]]
+    # --- Automations (compact, with optional summary) ---
+    try:
+        automations_raw = _ha_get("/states")
+        # filter states for automation domain only
+        autos: list[dict[str, Any]] = []
+        for s in automations_raw:
+            entity_id = s.get("entity_id")
+            if not entity_id or not entity_id.startswith("automation."):
+                continue
+            attrs = s.get("attributes", {})
+            alias = attrs.get("friendly_name", entity_id)
+            # simple, compact summary if available
+            summary = attrs.get("description") or attrs.get("summary")
+            autos.append(
+                {
+                    "id": entity_id,
+                    "name": alias,
+                    "summary": summary,
+                }
+            )
+        context["automations"] = autos
+    except Exception as e:
+        current_app.logger.error(f"❌ Failed to fetch automations summary: {e}", exc_info=True)
+        context.setdefault("automations", [])
 
-        current_app.logger.info(f"✅ Found {len(services)} services")
+    # --- Build a small textual summary for logging / progress ---
+    summary = (
+        f"entities={len(context.get('entities', []))}, "
+        f"services={len(context.get('services', []))}, "
+        f"automations={len(context.get('automations', []))}, "
+        f"areas={len(context.get('areas', []))}"
+    )
+    current_app.logger.info(f"✅ HA context ready: {summary}")
 
-        # Log services to file
-        services_log_file = "/data/services_response.json"
-        try:
-            with open(services_log_file, "w") as f:
-                json.dump(services_data, f, indent=2)
-            current_app.logger.info(f"💾 Full services response saved to: {services_log_file}")
-        except Exception as log_error:
-            current_app.logger.warning(f"⚠️  Could not save services to file: {log_error}")
-
-        context_data = {"entities": entities, "services": services, "automations": automations}
-
-        summary = f"Context: {len(entities)} entities, {len(services)} services, and {len(automations)} automations."
-
-        current_app.logger.info(f"📊 {summary}")
-
-        return context_data, summary
-
-    except requests.exceptions.RequestException as e:
-        current_app.logger.error(f"❌ Could not connect to Home Assistant API: {e}")
-        raise ConnectionError(f"Could not connect to Home Assistant API: {e}") from e
+    return context, summary
 
 
 # --- API Endpoints ---
@@ -390,11 +459,11 @@ def generate_automation_stream():
             data = request.get_json()
 
             prompt = data.get("prompt")
-            conversation_history = data.get("conversation_history", [])
+            conversation_history = data.get("conversation_history", []) or []
 
             current_app.logger.info(f"💬 New generation request - Prompt: {prompt[:100]}...")
             if conversation_history:
-                current_app.logger.info(f"📜 Conversation history: {len(conversation_history)} messages")
+                current_app.logger.info(f"📜 Conversation history (raw): {len(conversation_history)} messages")
 
             if not prompt:
                 error_response = {
@@ -405,19 +474,38 @@ def generate_automation_stream():
                 yield f"data: {json.dumps(error_response)}\n\n"
                 return
 
-            # Build context
-            full_context = ""
-            if conversation_history:
-                full_context = "Previous conversation:\n"
-                for msg in conversation_history:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    full_context += f"{role}: {msg['content']}\n\n"
-                full_context += f"User: {prompt}"
-            else:
-                full_context = prompt
-
             options = get_options()
             llm_provider_name = options.get("llm_provider", "ollama")
+
+            # --- NEW: limit number of chat messages sent as context ---
+            try:
+                max_history = int(options.get("chat_history_max_messages", 10))
+            except (ValueError, TypeError):
+                max_history = 10
+
+            if max_history > 0 and conversation_history:
+                trimmed_history = conversation_history[-max_history:]
+            else:
+                trimmed_history = []
+
+            current_app.logger.info(
+                f"🧠 Using {len(trimmed_history)}/{len(conversation_history)} history messages for context "
+                f"(max_history={max_history})"
+            )
+
+            # Build a text version of the (trimmed) history for models that
+            # benefit from a flattened conversation string.
+            history_text = ""
+            for msg in trimmed_history:
+                role = "User" if msg.get("role") == "user" else "Assistant"
+                content = msg.get("content", "")
+                history_text += f"{role}: {content}\n\n"
+
+            # full_context stays small: just the current user prompt plus optional header
+            if trimmed_history:
+                full_context = f"User: {prompt}"
+            else:
+                full_context = prompt
 
             try:
                 llm_provider = get_llm_provider(llm_provider_name)
@@ -445,14 +533,20 @@ def generate_automation_stream():
                     "entities": len(ha_context.get("entities", [])),
                     "services": len(ha_context.get("services", [])),
                     "automations": len(ha_context.get("automations", [])),
-                    "prompt_length": len(full_context),
+                    "prompt_length": len(full_context) + len(history_text),
+                    "history_messages": len(trimmed_history),
                 },
             }
             yield f"data: {json.dumps(context_stats)}\n\n"
 
-            # Use template to render prompt (this will log the rendered prompt)
+            # --- NEW: pass trimmed history into prompt rendering ---
             current_app.logger.info("🔨 Rendering system prompt from template...")
-            creation_prompt = render_system_prompt(ha_context, full_context)
+            # pass both full_context (current user request) and trimmed_history
+            creation_prompt = render_system_prompt(
+                ha_context,
+                user_request=full_context,
+                chat_history=trimmed_history,
+            )
 
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'generating', 'provider': llm_provider_name})}\n\n"
 
@@ -587,13 +681,13 @@ def preview_prompt_template():
             return jsonify({"error": f"Failed to fetch Home Assistant data: {str(e)}"}), 500
 
         sample_request = "Turn on the living room lights when motion is detected after sunset"
+        sample_history: list[dict[str, str]] = []  # or a small hard-coded sample if you prefer
 
-        # Render template with real data
         template = Template(template_str)
         rendered = template.render(
             ha_context=ha_context,
             user_request=sample_request,
-            automations=ha_context.get("automations", []),
+            chat_history=sample_history,  # <-- add this
         )
 
         return jsonify({"rendered": rendered})
