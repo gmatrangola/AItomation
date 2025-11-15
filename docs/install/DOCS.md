@@ -51,19 +51,19 @@ Range: 30-600 seconds
 
 Custom Jinja2 template for the system prompt. Leave empty to use default.
 
-Available variables:
-- `{{ ha_context }}` - Full HA context
-- `{{ user_request }}` - User's request
-- `{{ num_entities }}` - Entity count
-- `{{ num_services }}` - Service count
-- `{{ num_automations }}` - Automation count
+Available variables in `system_prompt_template`:
 
-Example:
-```jinja2
-Generate automation for: {{ user_request }}
-Entities available: {{ num_entities }}
-Format: YAML with explanation
-```
+- `{{ ha_context }}` – Full Home Assistant context object
+  - `ha_context.config.time_zone`
+  - `ha_context.config.unit_system`
+  - `ha_context.entities` – list of `{ id, name, domain, area_id }`
+  - `ha_context.helpers` – `input_boolean`, `input_datetime`, `input_number`, `other`
+  - `ha_context.scenes` – list of scene entity IDs
+  - `ha_context.areas` – each with `id`, `name`, `entities_by_domain`
+  - `ha_context.services` – list like `["light.turn_on", "switch.toggle", ...]`
+  - `ha_context.automations` – list of `{ id, name, summary }`
+- `{{ user_request }}` – Current user’s natural language request
+- `{{ chat_history }}` – Recent chat messages (for conversational context)
 
 ## Usage Guide
 
@@ -185,8 +185,41 @@ A: No. Generated automations are standalone and don't modify existing ones.
 **Q: Can I edit generated automations?**  
 A: Yes! After installing, edit them in Settings → Automations & Scenes.
 
-## Support
+### How configuration is stored
 
-- [GitHub Issues](https://github.com/gmatrangola/AItomation/issues)
-- [Discussions](https://github.com/gmatrangola/AItomation/discussions)
-- [Home Assistant Community](https://community.home-assistant.io/)
+The add-on reads two kinds of configuration:
+
+- **Supervisor options** (`/data/options.json`)
+  - Managed by Home Assistant Supervisor (Add-on Configuration UI).
+  - Read-only from the add-on’s perspective.
+  - Used for base options like default provider, default models, etc.
+
+- **Add-on state** (`/data/aitomations_config.json`)
+  - Managed by the add-on itself via `/api/config`.
+  - Persists API keys, user overrides, and the custom `system_prompt_template`.
+  - Survives restarts and is merged over Supervisor options when building the effective config.
+
+### How Home Assistant context is built
+
+When generating automations, the add-on calls the Home Assistant API to build a compact context:
+
+- `/config` → time zone and unit system
+- `/states` → entities, helpers, scenes, and automations
+  - Entities include: `id`, `name`, `domain`, `area_id` (if available)
+  - Helpers grouped by domain: `input_boolean`, `input_datetime`, `input_number`, other `input_*`
+  - Scenes detected by `scene.*`
+  - Automations detected by `automation.*`, with `name` and optional `summary`
+- `/services` → list of `domain.service` strings
+
+Areas are inferred from entity `area_id` attributes and grouped as:
+
+```json
+{
+  "id": "living_room",
+  "name": "living_room",
+  "entities_by_domain": {
+    "light": ["light.living_room_main", "light.floor_lamp"],
+    "switch": ["switch.tv_outlet"]
+  }
+}
+```
