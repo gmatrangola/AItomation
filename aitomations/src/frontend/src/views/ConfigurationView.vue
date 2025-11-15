@@ -314,10 +314,16 @@ const geminiModels = [
 ];
 
 const availableVariables: TemplateVariable[] = [
-    { name: '{{ ha_context.entities }}', description: 'List of all entities (id, name)' },
+    {
+        name: '{{ ha_context }}',
+        description:
+            'Full Home Assistant context object (config, areas, entities, helpers, scenes, automations, services)',
+    },
+    { name: '{{ ha_context.entities }}', description: 'List of entities (id, name, domain, area_id)' },
     { name: '{{ ha_context.services }}', description: 'List of available services (e.g., light.turn_on)' },
-    { name: '{{ ha_context.automations }}', description: 'List of existing automations (id, name)' },
-    { name: '{{ user_request }}', description: "User's automation request with conversation history" },
+    { name: '{{ ha_context.automations }}', description: 'List of existing automations (id, name, summary)' },
+    { name: '{{ user_request }}', description: 'Current user instruction text' },
+    { name: '{{ chat_history }}', description: 'Recent conversation messages (role, content)' },
 ];
 
 const exampleTemplate = `You are a Home Assistant automation expert.

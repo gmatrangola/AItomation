@@ -5,7 +5,7 @@ from typing import Any
 import requests
 from flask import current_app
 
-from api.routes import HA_API_URL, HA_HEADERS  # reuse existing constants
+from api.config import HA_API_URL, HA_HEADERS  # reuse existing constants
 
 
 def _ha_get(path: str) -> Any:

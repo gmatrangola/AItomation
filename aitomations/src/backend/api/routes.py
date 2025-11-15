@@ -9,8 +9,16 @@ import requests
 import yaml
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
+from api.config import (
+    ADDON_STATE_FILE,
+    HA_API_URL,
+    HA_HEADERS,
+    PROMPTS_DIR,
+    SUPERVISOR_TOKEN,
+)
 from api.context import get_ha_context
 from api.errors import APIError
+from api.options import get_options
 from api.prompting import render_system_prompt
 from llm.gemini import GeminiProvider
 from llm.ollama import OllamaProvider
@@ -18,39 +26,43 @@ from llm.ollama import OllamaProvider
 api_blueprint = Blueprint("api", __name__)
 
 # --- Constants ---
-HA_API_URL = "http://supervisor/core/api"
-SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
-HA_HEADERS = {
-    "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
-    "Content-Type": "application/json",
-}
-OPTIONS_FILE = "/data/options.json"
 AITOMATIONS_METADATA_KEY = "aitomations_metadata"
-
-PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "prompts")
 
 
 # --- Helper Functions ---
-def get_options() -> dict[str, Any]:
-    """Load add-on options from the options.json file."""
-    try:
-        with open(OPTIONS_FILE) as file:
-            data = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-    # Ensure we always return a dict[str, Any]
-    if isinstance(data, dict):
-        return data
-    return {}
-
-
 def get_llm_provider(provider_name: str):
     if provider_name == "gemini":
         return GeminiProvider()
     if provider_name == "ollama":
         return OllamaProvider()
     raise ValueError(f"Unknown LLM provider: {provider_name}")
+
+
+def load_addon_state() -> dict[str, Any]:
+    """Load addon-specific persistent state (e.g., API tokens) from our own file."""
+    try:
+        with open(ADDON_STATE_FILE) as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+    if isinstance(data, dict):
+        return data
+    return {}
+
+
+def save_addon_state(state: dict[str, Any]) -> None:
+    """Persist addon-specific state to our own file."""
+    os.makedirs(os.path.dirname(ADDON_STATE_FILE), exist_ok=True)
+    with open(ADDON_STATE_FILE, "w") as file:
+        json.dump(state, file, indent=2)
+
+
+def get_effective_config() -> dict[str, Any]:
+    """Supervisor options overlaid with persisted addon state."""
+    base = get_options()
+    state = load_addon_state()
+    return {**base, **state}
 
 
 # --- API Endpoints ---
@@ -61,39 +73,60 @@ def health_check():
 
 @api_blueprint.route("/config", methods=["POST"])
 def save_config():
-    """Save configuration to options.json"""
+    """Save addon configuration (tokens, model prefs) to our own state file."""
     try:
         data = request.get_json() or {}
-        existing = get_options()
+        current_app.logger.info("🛠 Received config save request: %s", list(data.keys()))
+
+        # Supervisor options (read-only base)
+        base_options = get_options()
+        # Our persisted state (read/write)
+        state = load_addon_state()
+
+        # Start from existing state, then overlay new values
+        merged: dict[str, Any] = {**state}
 
         # Preserve any masked secret fields containing 'key'
-        for k, v in list(data.items()):
-            if "key" in k.lower() and v == "***":
-                # Keep existing real value if present
-                if existing.get(k):
-                    data[k] = existing[k]
+        for key, value in list(data.items()):
+            if "key" in key.lower() and value == "***":
+                # Keep existing real value if present in state
+                if state.get(key):
+                    merged[key] = state[key]
                 else:
-                    # No existing value; treat as empty
-                    data[k] = ""
+                    merged[key] = ""
+            else:
+                merged[key] = value
 
-        if data.get("llm_provider") not in ["gemini", "ollama"]:
-            return jsonify({"error": "Invalid LLM provider"}), 400
+        # Effective config for validation (state over base options)
+        effective = {**base_options, **merged}
+        llm_provider = effective.get("llm_provider")
 
-        with open(OPTIONS_FILE, "w") as f:
-            json.dump(data, f, indent=2)
+        if llm_provider not in ("gemini", "ollama"):
+            current_app.logger.warning("⚠️ Invalid LLM provider in config: %r", llm_provider)
+            return (
+                jsonify({"success": False, "error": "Invalid LLM provider", "details": {"llm_provider": llm_provider}}),
+                400,
+            )
 
-        current_app.logger.info("✅ Configuration saved successfully")
+        save_addon_state(merged)
+        current_app.logger.info("✅ Add-on configuration saved successfully")
         return jsonify({"success": True})
-    except Exception as e:
-        current_app.logger.error(f"❌ Error saving configuration: {e}")
-        return jsonify({"error": str(e)}), 500
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.error("❌ Error saving configuration", exc_info=True)
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @api_blueprint.route("/config")
 def get_config():
-    options = get_options()
+    # Base options from Supervisor + addon-specific state
+    base_options = get_options()
+    state = load_addon_state()
+
+    # State overrides base options where keys overlap
+    effective: dict[str, Any] = {**base_options, **state}
+
     safe_config: dict[str, object] = {}
-    for k, v in options.items():
+    for k, v in effective.items():
         if "key" in k.lower() and v:
             safe_config[k] = "***"
             safe_config[f"{k}_present"] = True
@@ -244,7 +277,7 @@ def generate_automation_stream():
                 yield f"data: {json.dumps(error_response)}\n\n"
                 return
 
-            options = get_options()
+            options = get_effective_config()
             llm_provider_name = options.get("llm_provider", "ollama")
 
             # --- NEW: limit number of chat messages sent as context ---
@@ -391,7 +424,7 @@ def install_automation():
             config = config[0]
 
         if prompt:
-            options = get_options()
+            options = get_effective_config()
             config[AITOMATIONS_METADATA_KEY] = {
                 "source": "aitomations_addon",
                 "prompt": prompt,

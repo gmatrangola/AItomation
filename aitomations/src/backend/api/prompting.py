@@ -7,9 +7,11 @@ from typing import Any
 from flask import current_app
 from jinja2 import Environment, FileSystemLoader, TemplateError
 
-from api.routes import PROMPTS_DIR, get_options  # reuse constants/options
+from api.config import PROMPTS_DIR
+from api.options import get_options  # <-- change from api.routes to api.options
 
 jinja_env = Environment(loader=FileSystemLoader(PROMPTS_DIR), autoescape=False)
+
 
 _prompts_dir_logged = False
 
