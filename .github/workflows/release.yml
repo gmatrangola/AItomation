@@ -32,25 +32,74 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Release version: $VERSION"
 
-      - name: Update config.json with version
+      - name: Validate config.json has image field
         run: |
-          cd aitomations
-          jq --arg version "${{ steps.version.outputs.VERSION }}" \
-             '.version = $version' \
-             config.json > config.json.tmp
-          mv config.json.tmp config.json
+          if ! jq -e '.image' aitomations/config.json > /dev/null; then
+            echo "❌ ERROR: config.json is missing the 'image' field"
+            echo "The image field is required for releases so users pull from Docker Hub"
+            echo ""
+            echo "Expected format:"
+            echo '  "image": "gmatrangola/aitomations-{arch}"'
+            exit 1
+          fi
+          echo "✓ config.json has image field"
 
-      - name: Update README.md badge
+      - name: Validate version consistency
         run: |
-          sed -i "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/version-${{ steps.version.outputs.VERSION }}-blue/g" README.md
+          CONFIG_VERSION=$(jq -r '.version' aitomations/config.json)
+          PACKAGE_VERSION=$(jq -r '.version' aitomations/src/frontend/package.json)
+          TAG_VERSION="${{ steps.version.outputs.VERSION }}"
+          
+          echo "Tag version:     $TAG_VERSION"
+          echo "config.json:     $CONFIG_VERSION"
+          echo "package.json:    $PACKAGE_VERSION"
+          
+          ERRORS=0
+          
+          if [ "$CONFIG_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ ERROR: config.json version ($CONFIG_VERSION) does not match tag ($TAG_VERSION)"
+            ERRORS=$((ERRORS + 1))
+          fi
+          
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ ERROR: package.json version ($PACKAGE_VERSION) does not match tag ($TAG_VERSION)"
+            ERRORS=$((ERRORS + 1))
+          fi
+          
+          if [ $ERRORS -gt 0 ]; then
+            echo ""
+            echo "Please update version numbers before tagging:"
+            echo "  - aitomations/config.json"
+            echo "  - aitomations/src/frontend/package.json"
+            exit 1
+          fi
+          
+          echo "✓ All version numbers match"
 
       - name: Validate changelog has entry
         run: |
           if ! grep -q "## \[${{ steps.version.outputs.VERSION }}\]" aitomations/Changelog.md; then
-            echo "ERROR: No changelog entry found for version ${{ steps.version.outputs.VERSION }}"
-            echo "Please add a section in aitomations/Changelog.md before tagging"
+            echo "❌ ERROR: No changelog entry found for version ${{ steps.version.outputs.VERSION }}"
+            echo ""
+            echo "Please add a section in aitomations/Changelog.md with format:"
+            echo "## [${{ steps.version.outputs.VERSION }}] - $(date +%Y-%m-%d)"
+            echo ""
+            echo "### Added"
+            echo "- New feature 1"
+            echo "- New feature 2"
+            echo ""
+            echo "### Changed"
+            echo "- Changed behavior 1"
+            echo ""
+            echo "### Fixed"
+            echo "- Bug fix 1"
             exit 1
           fi
+          echo "✓ Changelog entry exists for version ${{ steps.version.outputs.VERSION }}"
+
+      - name: Update README.md badge
+        run: |
+          sed -i "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/version-${{ steps.version.outputs.VERSION }}-blue/g" README.md
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -95,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [amd64, aarch64, armv7]  # Updated to match config.json
+        arch: [amd64, aarch64, armv7]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

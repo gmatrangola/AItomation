@@ -22,6 +22,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check config.json for development
+        run: |
+          HAS_IMAGE=$(jq -e '.image' aitomations/config.json > /dev/null && echo "yes" || echo "no")
+          
+          if [ "$HAS_IMAGE" = "yes" ]; then
+            echo "⚠️  WARNING: config.json has 'image' field on development branch"
+            echo "This will cause local builds to pull from Docker Hub instead of building locally"
+            echo ""
+            echo "For development, consider:"
+            echo "  1. Remove the 'image' field from config.json"
+            echo "  2. Or use a separate config.local.json"
+            echo ""
+            echo "The 'image' field will be validated on release tags"
+          else
+            echo "✓ config.json configured for local development (no image field)"
+          fi
+
+      - name: Check version consistency
+        run: |
+          CONFIG_VERSION=$(jq -r '.version' aitomations/config.json)
+          PACKAGE_VERSION=$(jq -r '.version' aitomations/src/frontend/package.json)
+          
+          echo "config.json version:  $CONFIG_VERSION"
+          echo "package.json version: $PACKAGE_VERSION"
+          
+          if [ "$CONFIG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "⚠️  WARNING: Version mismatch detected"
+            echo "These should be the same for consistency"
+          else
+            echo "✓ Versions match"
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -48,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [amd64, aarch64, armv7]  # Updated to match config.json
+        arch: [amd64, aarch64, armv7]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

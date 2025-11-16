@@ -3,71 +3,66 @@ import os
 import re
 import time
 import traceback
+from typing import Any
 
 import requests
 import yaml
 from flask import Blueprint, Response, current_app, jsonify, request, stream_with_context
 
+from api.config import (
+    ADDON_STATE_FILE,
+    HA_API_URL,
+    HA_HEADERS,
+    PROMPTS_DIR,
+    SUPERVISOR_TOKEN,
+)
+from api.context import get_ha_context
 from api.errors import APIError
+from api.options import get_options
+from api.prompting import render_system_prompt
 from llm.gemini import GeminiProvider
 from llm.ollama import OllamaProvider
 
 api_blueprint = Blueprint("api", __name__)
 
 # --- Constants ---
-HA_API_URL = "http://supervisor/core/api"
-SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN")
-HA_HEADERS = {
-    "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
-    "Content-Type": "application/json",
-}
-OPTIONS_FILE = "/data/options.json"
 AITOMATIONS_METADATA_KEY = "aitomations_metadata"
 
 
 # --- Helper Functions ---
-def get_options():
-    try:
-        with open(OPTIONS_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
 def get_llm_provider(provider_name: str):
     if provider_name == "gemini":
         return GeminiProvider()
-    elif provider_name == "ollama":
+    if provider_name == "ollama":
         return OllamaProvider()
-    else:
-        raise ValueError(f"Unknown LLM provider: {provider_name}")
+    raise ValueError(f"Unknown LLM provider: {provider_name}")
 
 
-def _get_ha_context():
-    if not SUPERVISOR_TOKEN:
-        raise ConnectionError("Supervisor token not found.")
+def load_addon_state() -> dict[str, Any]:
+    """Load addon-specific persistent state (e.g., API tokens) from our own file."""
     try:
-        states_response = requests.get(f"{HA_API_URL}/states", headers=HA_HEADERS, timeout=10)
-        states_response.raise_for_status()
-        all_states = states_response.json()
-        entities = [
-            {"id": e["entity_id"], "name": e["attributes"].get("friendly_name", e["entity_id"])} for e in all_states
-        ]
-        automations = [
-            {"id": s["entity_id"], "name": s["attributes"].get("friendly_name", s["entity_id"])}
-            for s in all_states
-            if s["entity_id"].startswith("automation.")
-        ]
-        services_response = requests.get(f"{HA_API_URL}/services", headers=HA_HEADERS, timeout=10)
-        services_response.raise_for_status()
-        services = [
-            f"{domain['domain']}.{service}" for domain in services_response.json() for service in domain["services"]
-        ]
-        context_data = {"entities": entities, "services": services, "automations": automations}
-        summary = f"Context: {len(entities)} entities, {len(services)} services, and {len(automations)} automations."
-        return context_data, summary
-    except requests.exceptions.RequestException as e:
-        raise ConnectionError(f"Could not connect to Home Assistant API: {e}") from e
+        with open(ADDON_STATE_FILE) as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+    if isinstance(data, dict):
+        return data
+    return {}
+
+
+def save_addon_state(state: dict[str, Any]) -> None:
+    """Persist addon-specific state to our own file."""
+    os.makedirs(os.path.dirname(ADDON_STATE_FILE), exist_ok=True)
+    with open(ADDON_STATE_FILE, "w") as file:
+        json.dump(state, file, indent=2)
+
+
+def get_effective_config() -> dict[str, Any]:
+    """Supervisor options overlaid with persisted addon state."""
+    base = get_options()
+    state = load_addon_state()
+    return {**base, **state}
 
 
 # --- API Endpoints ---
@@ -76,10 +71,67 @@ def health_check():
     return jsonify({"status": "healthy"})
 
 
+@api_blueprint.route("/config", methods=["POST"])
+def save_config():
+    """Save addon configuration (tokens, model prefs) to our own state file."""
+    try:
+        data = request.get_json() or {}
+        current_app.logger.info("🛠 Received config save request: %s", list(data.keys()))
+
+        # Supervisor options (read-only base)
+        base_options = get_options()
+        # Our persisted state (read/write)
+        state = load_addon_state()
+
+        # Start from existing state, then overlay new values
+        merged: dict[str, Any] = {**state}
+
+        # Preserve any masked secret fields containing 'key'
+        for key, value in list(data.items()):
+            if "key" in key.lower() and value == "***":
+                # Keep existing real value if present in state
+                if state.get(key):
+                    merged[key] = state[key]
+                else:
+                    merged[key] = ""
+            else:
+                merged[key] = value
+
+        # Effective config for validation (state over base options)
+        effective = {**base_options, **merged}
+        llm_provider = effective.get("llm_provider")
+
+        if llm_provider not in ("gemini", "ollama"):
+            current_app.logger.warning("⚠️ Invalid LLM provider in config: %r", llm_provider)
+            return (
+                jsonify({"success": False, "error": "Invalid LLM provider", "details": {"llm_provider": llm_provider}}),
+                400,
+            )
+
+        save_addon_state(merged)
+        current_app.logger.info("✅ Add-on configuration saved successfully")
+        return jsonify({"success": True})
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.error("❌ Error saving configuration", exc_info=True)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
 @api_blueprint.route("/config")
 def get_config():
-    options = get_options()
-    safe_config = {k: ("***" if "key" in k.lower() and v else v) for k, v in options.items()}
+    # Base options from Supervisor + addon-specific state
+    base_options = get_options()
+    state = load_addon_state()
+
+    # State overrides base options where keys overlap
+    effective: dict[str, Any] = {**base_options, **state}
+
+    safe_config: dict[str, object] = {}
+    for k, v in effective.items():
+        if "key" in k.lower() and v:
+            safe_config[k] = "***"
+            safe_config[f"{k}_present"] = True
+        else:
+            safe_config[k] = v
     return jsonify(safe_config)
 
 
@@ -125,7 +177,7 @@ def get_automations():
             processed_automations.append(item)
         return jsonify(processed_automations)
     except Exception as e:
-        current_app.logger.error(f" An unexpected error occurred in get_automations: {e}")
+        current_app.logger.error(f"❌ An unexpected error occurred in get_automations: {e}")
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 
@@ -151,11 +203,11 @@ def get_chat_history():
             return jsonify({"messages": []})
 
         messages = data.get("messages", [])
-        current_app.logger.info(f" Loaded {len(messages)} messages from storage")
+        current_app.logger.info(f"📚 Loaded {len(messages)} messages from storage")
 
         return jsonify({"messages": messages})
     except Exception as e:
-        current_app.logger.error(f" Error loading chat history: {e}")
+        current_app.logger.error(f"❌ Error loading chat history: {e}")
         return jsonify({"messages": [], "error": str(e)}), 500
 
 
@@ -166,7 +218,7 @@ def save_chat_history():
         data = request.get_json()
         messages = data.get("messages", [])
 
-        current_app.logger.info(f" Saving {len(messages)} messages to storage")
+        current_app.logger.info(f"💾 Saving {len(messages)} messages to storage")
 
         storage_path = "/data/chat_history.json"
         storage_data = {"messages": messages, "timestamp": time.time()}
@@ -179,7 +231,7 @@ def save_chat_history():
 
         return jsonify({"success": True})
     except Exception as e:
-        current_app.logger.error(f" Error saving chat history: {e}")
+        current_app.logger.error(f"❌ Error saving chat history: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -191,11 +243,11 @@ def clear_chat_history():
 
         if os.path.exists(storage_path):
             os.remove(storage_path)
-            current_app.logger.info(" Chat history cleared")
+            current_app.logger.info("🗑️  Chat history cleared")
 
         return jsonify({"success": True})
     except Exception as e:
-        current_app.logger.error(f" Error clearing chat history: {e}")
+        current_app.logger.error(f"❌ Error clearing chat history: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -210,7 +262,11 @@ def generate_automation_stream():
             data = request.get_json()
 
             prompt = data.get("prompt")
-            conversation_history = data.get("conversation_history", [])
+            conversation_history = data.get("conversation_history", []) or []
+
+            current_app.logger.info(f"💬 New generation request - Prompt: {prompt[:100]}...")
+            if conversation_history:
+                current_app.logger.info(f"📜 Conversation history (raw): {len(conversation_history)} messages")
 
             if not prompt:
                 error_response = {
@@ -221,25 +277,43 @@ def generate_automation_stream():
                 yield f"data: {json.dumps(error_response)}\n\n"
                 return
 
-            # Build context
-            full_context = ""
-            if conversation_history:
-                full_context = "Previous conversation:\n"
-                for msg in conversation_history:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    full_context += f"{role}: {msg['content']}\n\n"
-                full_context += f"User: {prompt}"
+            options = get_effective_config()
+            llm_provider_name = options.get("llm_provider", "ollama")
+
+            # --- NEW: limit number of chat messages sent as context ---
+            try:
+                max_history = int(options.get("chat_history_max_messages", 10))
+            except (ValueError, TypeError):
+                max_history = 10
+
+            if max_history > 0 and conversation_history:
+                trimmed_history = conversation_history[-max_history:]
+            else:
+                trimmed_history = []
+
+            current_app.logger.info(
+                f"🧠 Using {len(trimmed_history)}/{len(conversation_history)} history messages for context "
+                f"(max_history={max_history})"
+            )
+
+            # Build a text version of the (trimmed) history for models that
+            # benefit from a flattened conversation string.
+            history_text = ""
+            for msg in trimmed_history:
+                role = "User" if msg.get("role") == "user" else "Assistant"
+                content = msg.get("content", "")
+                history_text += f"{role}: {content}\n\n"
+
+            # full_context stays small: just the current user prompt plus optional header
+            if trimmed_history:
+                full_context = f"User: {prompt}"
             else:
                 full_context = prompt
 
-            options = get_options()
-            llm_provider_name = options.get("llm_provider", "ollama")
-
-            # Get LLM provider inside try block to catch ValueError from URL parsing
             try:
                 llm_provider = get_llm_provider(llm_provider_name)
             except ValueError as e:
-                current_app.logger.error(f" Invalid LLM provider configuration: {e}")
+                current_app.logger.error(f"❌ Invalid LLM provider configuration: {e}")
                 error_response = {
                     "type": "error",
                     "error_code": "INVALID_CONFIG",
@@ -251,12 +325,10 @@ def generate_automation_stream():
                 yield f"data: {json.dumps(error_response)}\n\n"
                 return
 
-            # Send initial progress - gathering context
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'gathering_context'})}\n\n"
 
-            ha_context, context_summary = _get_ha_context()
+            ha_context, context_summary = get_ha_context()
 
-            # Send context statistics
             context_stats = {
                 "type": "progress",
                 "stage": "context_ready",
@@ -264,50 +336,19 @@ def generate_automation_stream():
                     "entities": len(ha_context.get("entities", [])),
                     "services": len(ha_context.get("services", [])),
                     "automations": len(ha_context.get("automations", [])),
-                    "prompt_length": len(full_context),
+                    "prompt_length": len(full_context) + len(history_text),
+                    "history_messages": len(trimmed_history),
                 },
             }
             yield f"data: {json.dumps(context_stats)}\n\n"
 
-            creation_prompt = f"""You are an expert Home Assistant automation assistant. Your goal is to generate a single, complete YAML configuration for an automation based on the user's request and the provided context.
+            current_app.logger.info("🔨 Rendering system prompt from template...")
+            creation_prompt = render_system_prompt(
+                ha_context=ha_context,
+                user_request=full_context,
+                chat_history=trimmed_history,
+            )
 
-**Instructions:**
-1.  Analyze the user's request and the available Home Assistant context (entities, services).
-2.  Create a valid Home Assistant automation in YAML format.
-3.  Your response **MUST** be in Markdown format.
-4.  The response should contain two parts:
-    - An "Explanation" section that describes what the automation does in simple terms.
-    - A "YAML" section containing the automation configuration inside a `yaml` code block.
-
-**Home Assistant Context:**
-```json
-{json.dumps(ha_context, indent=2)}
-```
-
-**User Request:**
-{full_context}
-
-Example Response Format:
-
-## Explanation
-This automation will turn on the kitchen light when motion is detected.
-
-```yaml
-alias: Turn on Kitchen Light on Motion
-description: ''
-trigger:
-  - platform: state
-    entity_id: binary_sensor.kitchen_motion
-    to: 'on'
-action:
-  - service: light.turn_on
-    target:
-      entity_id: light.kitchen_light
-mode: single
-```
-"""
-
-            # Send generating stage
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'generating', 'provider': llm_provider_name})}\n\n"
 
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
@@ -318,26 +359,26 @@ mode: single
                 full_response += chunk
                 chunk_count += 1
 
-                # Send content with progress metadata every 10 chunks
                 if chunk_count % 10 == 0:
                     yield f"data: {json.dumps({'type': 'content', 'text': chunk, 'chunks_received': chunk_count})}\n\n"
                 else:
                     yield f"data: {json.dumps({'type': 'content', 'text': chunk})}\n\n"
 
-            # Send completion progress
+            current_app.logger.info(f"✅ Generation complete - {chunk_count} chunks, {len(full_response)} characters")
+
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'complete', 'total_chunks': chunk_count, 'response_length': len(full_response)})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done', 'full_response': full_response})}\n\n"
 
         except APIError as e:
             # Structured error with error code and context
-            current_app.logger.error(f" APIError: {e.code.value} - {e.context}")
+            current_app.logger.error(f"❌ APIError: {e.code.value} - {e.context}")
             error_response = {"type": "error", **e.to_dict()}
             yield f"data: {json.dumps(error_response)}\n\n"
 
         except ValueError as e:
             # Handle URL parsing errors and other ValueErrors
-            current_app.logger.error(f" ValueError: {e}")
+            current_app.logger.error(f"❌ ValueError: {e}")
             error_response = {
                 "type": "error",
                 "error_code": "INVALID_CONFIG",
@@ -350,7 +391,7 @@ mode: single
 
         except Exception as e:
             # Unexpected error
-            current_app.logger.error(f" Unexpected error: {e}")
+            current_app.logger.error(f"❌ Unexpected error: {e}")
             traceback.print_exc()
 
             error_response = {
@@ -383,7 +424,7 @@ def install_automation():
             config = config[0]
 
         if prompt:
-            options = get_options()
+            options = get_effective_config()
             config[AITOMATIONS_METADATA_KEY] = {
                 "source": "aitomations_addon",
                 "prompt": prompt,
@@ -405,5 +446,53 @@ def install_automation():
 
         return jsonify(response.json())
     except Exception as e:
-        current_app.logger.error(f" Error in install_automation: {str(e)}")
+        current_app.logger.error(f"❌ Error in install_automation: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+
+@api_blueprint.route("/default_prompt_template")
+def get_default_prompt_template():
+    """Get the default system prompt template."""
+    try:
+        template_path = os.path.join(PROMPTS_DIR, "default_system_prompt.jinja2")
+        if os.path.exists(template_path):
+            with open(template_path) as f:
+                return jsonify({"template": f.read()})
+        else:
+            return jsonify({"error": "Default template not found"}), 404
+    except Exception as e:
+        current_app.logger.error(f"❌ Error reading default template: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@api_blueprint.route("/preview_prompt_template", methods=["POST"])
+def preview_prompt_template():
+    """Preview a template with real Home Assistant data."""
+    try:
+        data = request.get_json()
+        template_str = data.get("template", "")
+
+        if not template_str:
+            return jsonify({"error": "No template provided"}), 400
+
+        try:
+            ha_context, _ = get_ha_context()
+        except Exception as exc:  # noqa: BLE001
+            return jsonify({"error": f"Failed to fetch Home Assistant data: {exc}"}), 500
+
+        sample_request = "Turn on the living room lights when motion is detected after sunset"
+        sample_history: list[dict[str, Any]] = []
+
+        from jinja2 import Template
+
+        template = Template(template_str)
+        rendered = template.render(
+            ha_context=ha_context,
+            user_request=sample_request,
+            chat_history=sample_history,
+        )
+
+        return jsonify({"rendered": rendered})
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.error(f"❌ Error previewing template: {exc}")
+        return jsonify({"error": str(exc)}), 500

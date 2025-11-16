@@ -1,5 +1,28 @@
 <template>
     <div class="dashboard">
+        <!-- Configuration Error Banner - Takes Priority -->
+        <v-alert
+            v-if="configError"
+            type="warning"
+            variant="tonal"
+            prominent
+            class="config-error-banner"
+            closable
+            @click:close="configError = null"
+        >
+            <v-alert-title>
+                <v-icon start>mdi-cog-alert</v-icon>
+                Configuration Required
+            </v-alert-title>
+            <div class="mt-2">
+                {{ configError }}
+            </div>
+            <v-btn class="mt-3" color="warning" variant="elevated" size="small" :to="{ name: 'Configuration' }">
+                <v-icon start size="small">mdi-cog</v-icon>
+                Go to Configuration
+            </v-btn>
+        </v-alert>
+
         <!-- Error Banner - Top Level, Most Prominent -->
         <ErrorMessage v-if="currentError" :error="currentError" class="error-banner" @close="clearError" />
 
@@ -23,6 +46,7 @@
             <AIChat
                 ref="chatRef"
                 v-model="prompt"
+                :disabled="!!configError"
                 @install-automation="handleInstallAutomation"
                 @has-messages="hasMessages = $event"
                 @error="handleError"
@@ -100,6 +124,7 @@
 import { ref, onMounted } from 'vue';
 import AIChat from '@/components/AIChat.vue';
 import ErrorMessage from '@/components/ErrorMessage.vue';
+import { configService } from '@/services/configService';
 import type { APIError } from '@/types/errors';
 
 interface Automation {
@@ -120,9 +145,25 @@ const showSuccessSnackbar = ref(false);
 const hasMessages = ref(false);
 const chatRef = ref<InstanceType<typeof AIChat> | null>(null);
 const currentError = ref<APIError | null>(null);
+const configError = ref<string | null>(null);
+
+const checkConfiguration = async () => {
+    const result = await configService.checkConfiguration();
+
+    if (!result.isValid) {
+        configError.value = result.error;
+    } else {
+        configError.value = null;
+    }
+};
 
 const handleError = (error: APIError) => {
     currentError.value = error;
+
+    // Check if error is configuration-related
+    if (error.error_code === 'LLM_API_ERROR' || error.error_code === 'CONFIG_ERROR') {
+        configError.value = error.context?.details || 'Configuration error detected. Please check your settings.';
+    }
 };
 
 const clearError = () => {
@@ -199,7 +240,10 @@ const truncate = (text: string, length: number): string => {
     return text.substring(0, length) + '...';
 };
 
-onMounted(fetchAutomations);
+onMounted(async () => {
+    await checkConfiguration();
+    await fetchAutomations();
+});
 </script>
 
 <style scoped>
@@ -209,6 +253,12 @@ onMounted(fetchAutomations);
     height: 100vh;
     max-height: 100vh;
     overflow: hidden;
+}
+
+.config-error-banner {
+    flex-shrink: 0;
+    z-index: 101;
+    margin: 0.5rem;
 }
 
 .error-banner {
