@@ -11,3 +11,11 @@ All notable changes to this project will be documented in this file.
 - Streaming responses with progress indicators
 - Context-aware automation generation
 - Installation directly from UI
+
+## [1.0.1] - 2025-11-16
+
+### Added
+- User editibale system prompt with template replacement
+- Better default system prompt
+- Added rows to user propmt area
+- Config is now a Vue page for better UX
