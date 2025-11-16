@@ -2,6 +2,7 @@
   "name": "AItomations Creator",
   "version": "1.0.1",
   "slug": "aitomations-creator",
+  "image": "gmatrangola/aitomations-{arch}",
   "description": "Create Home Assistant automations using LLMs like Gemini or Ollama.",
   "url": "https://github.com/gmatrangola/aitomations",
   "startup": "application",
