@@ -85,7 +85,7 @@ mv config.json.tmp config.json
 cd ..
 
 # Update README.md badge
-sed -i "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/version-${VERSION}-blue/g" README.md
+sed -i.bak "s/version-[0-9]\+\.[0-9]\+\.[0-9]\+-blue/version-${VERSION}-blue/g" README.md && rm README.md.bak || true
 
 # Commit version changes
 git add aitomations/config.json README.md
