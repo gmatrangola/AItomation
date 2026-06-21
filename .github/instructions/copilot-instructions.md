@@ -9,7 +9,7 @@ AItomations is a Home Assistant Add-on with a decoupled frontend and backend, ru
 -   **Backend**: A Python Flask application located in `aitomations/src/backend/`.
     -   It serves a REST API for the frontend.
     -   It communicates with the Home Assistant Supervisor API to fetch entities and services.
-    -   It integrates with Large Language Models (LLMs) like Gemini and Ollama via modules in `aitomations/src/llm/`.
+    -   It integrates with Large Language Models (LLMs) like Gemini and Ollama via modules in `aitomations/src/backend/llm/`.
     -   The main application file is `app.py`. API routes are defined in `api/routes.py`.
 
 -   **Frontend**: A Vue 3 + TypeScript + Vuetify Single Page Application (SPA) located in `aitomations/src/frontend/`.
@@ -53,5 +53,5 @@ The `README.md` provides detailed instructions for setting up a Home Assistant O
 
 ## Code Conventions
 
--   **Backend**: The Flask app follows standard Flask patterns. It uses a base `LLM` class in `aitomations/src/llm/base.py` which other LLM providers inherit from.
+-   **Backend**: The Flask app follows standard Flask patterns. It uses a base `LLMProvider` class in `aitomations/src/backend/llm/base.py` which other LLM providers inherit from.
 -   **Frontend**: The Vue app uses the Composition API (`<script setup>`). Composables for shared logic are located in `aitomations/src/frontend/src/composables/`.

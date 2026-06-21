@@ -27,6 +27,7 @@ api_blueprint = Blueprint("api", __name__)
 
 # --- Constants ---
 AITOMATIONS_METADATA_KEY = "aitomations_metadata"
+CHAT_HISTORY_FILE = "/data/chat_history.json"
 
 
 # --- Helper Functions ---
@@ -183,56 +184,60 @@ def get_automations():
 
 # Chat history endpoints
 @api_blueprint.route("/chat/history", methods=["GET"])
-def get_chat_history():
-    """Get persisted chat history from Home Assistant storage."""
+def load_chat_history():
+    """Load chat history from storage, tolerating old/invalid formats."""
     try:
-        storage_path = "/data/chat_history.json"
-
-        if not os.path.exists(storage_path):
+        if not os.path.exists(CHAT_HISTORY_FILE):
             return jsonify({"messages": []})
 
-        with open(storage_path) as f:
+        with open(CHAT_HISTORY_FILE, "r") as f:
             data = json.load(f)
 
-        # Check if data is too old (7 days)
-        timestamp = data.get("timestamp", 0)
-        age_days = (time.time() - timestamp) / (60 * 60 * 24)
-
-        if age_days > 7:
-            os.remove(storage_path)
+        messages = data.get("messages", [])
+        if not isinstance(messages, list):
+            current_app.logger.warning("⚠️ chat_history.json has invalid 'messages'; resetting")
             return jsonify({"messages": []})
 
-        messages = data.get("messages", [])
-        current_app.logger.info(f"📚 Loaded {len(messages)} messages from storage")
+        # Optionally: minimal validation of each message
+        normalized: list[dict[str, Any]] = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            if "role" not in msg or "content" not in msg:
+                continue
+            normalized.append(msg)
 
-        return jsonify({"messages": messages})
-    except Exception as e:
-        current_app.logger.error(f"❌ Error loading chat history: {e}")
-        return jsonify({"messages": [], "error": str(e)}), 500
+        current_app.logger.info("📥 Loaded %d chat messages from storage", len(normalized))
+        return jsonify({"messages": normalized})
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.error("❌ Error loading chat history: %s", exc, exc_info=True)
+        # Treat any problem as "no history" rather than a hard failure
+        return jsonify({"messages": []})
 
 
 @api_blueprint.route("/chat/history", methods=["POST"])
 def save_chat_history():
-    """Save chat history to Home Assistant storage."""
+    """Save chat history to storage."""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
         messages = data.get("messages", [])
 
-        current_app.logger.info(f"💾 Saving {len(messages)} messages to storage")
+        if not isinstance(messages, list):
+            current_app.logger.warning("⚠️ Tried to save chat history with non-list 'messages'")
+            messages = []
 
-        storage_path = "/data/chat_history.json"
+        current_app.logger.info("💾 Saving %d messages to storage", len(messages))
+
         storage_data = {"messages": messages, "timestamp": time.time()}
 
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(storage_path), exist_ok=True)
-
-        with open(storage_path, "w") as f:
+        os.makedirs(os.path.dirname(CHAT_HISTORY_FILE), exist_ok=True)
+        with open(CHAT_HISTORY_FILE, "w") as f:
             json.dump(storage_data, f, indent=2)
 
         return jsonify({"success": True})
-    except Exception as e:
-        current_app.logger.error(f"❌ Error saving chat history: {e}")
-        return jsonify({"error": str(e)}), 500
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.error("❌ Error saving chat history: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
 
 
 @api_blueprint.route("/chat/history", methods=["DELETE"])
