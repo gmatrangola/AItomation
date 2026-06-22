@@ -33,6 +33,12 @@
                 Clear
             </v-btn>
             <v-spacer />
+            <v-btn variant="tonal" size="small" color="primary" class="mr-2" @click="openDashboards">
+                <v-badge :content="dashboards.length" :model-value="dashboards.length > 0" color="success" inline>
+                    <v-icon start size="small">mdi-view-dashboard-outline</v-icon>
+                </v-badge>
+                Dashboards
+            </v-btn>
             <v-btn variant="tonal" size="small" color="primary" @click="drawer = true">
                 <v-badge :content="automations.length" :model-value="automations.length > 0" color="success" inline>
                     <v-icon start size="small">mdi-cog-outline</v-icon>
@@ -47,7 +53,7 @@
                 ref="chatRef"
                 v-model="prompt"
                 :disabled="!!configError"
-                @install-automation="handleInstallAutomation"
+                @apply-artifact="handleApplyArtifact"
                 @has-messages="hasMessages = $event"
                 @error="handleError"
             />
@@ -112,10 +118,65 @@
             </v-list>
         </v-navigation-drawer>
 
+        <!-- Dashboard List Drawer -->
+        <v-navigation-drawer v-model="dashboardDrawer" location="right" temporary width="400">
+            <template #prepend>
+                <div class="drawer-header">
+                    <div class="drawer-title">
+                        <v-icon size="small" class="mr-2">mdi-view-dashboard-outline</v-icon>
+                        <span>Dashboards</span>
+                    </div>
+                    <v-btn icon variant="text" size="x-small" @click="dashboardDrawer = false">
+                        <v-icon size="small">mdi-close</v-icon>
+                    </v-btn>
+                </div>
+                <v-divider />
+            </template>
+
+            <v-list density="compact">
+                <v-list-item v-if="dashboardsLoading">
+                    <v-progress-circular indeterminate color="primary" size="20" />
+                    <span class="ml-3 text-caption">Loading...</span>
+                </v-list-item>
+
+                <v-list-item v-else-if="dashboards.length === 0">
+                    <v-list-item-title class="text-secondary text-caption"> No dashboards found </v-list-item-title>
+                </v-list-item>
+
+                <v-list-item v-for="dash in dashboards" :key="dash.url_path ?? 'default'" class="automation-item">
+                    <template #prepend>
+                        <v-avatar color="primary" size="28">
+                            <v-icon size="x-small" color="white">mdi-view-dashboard</v-icon>
+                        </v-avatar>
+                    </template>
+
+                    <v-list-item-title class="text-body-2">{{ dash.title || dash.url_path }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-caption">
+                        {{ dash.url_path ?? 'default' }} · {{ dash.mode }}
+                    </v-list-item-subtitle>
+
+                    <template #append>
+                        <v-btn size="x-small" color="primary" variant="text" icon @click="handleEditDashboard(dash)">
+                            <v-icon size="small">mdi-pencil</v-icon>
+                        </v-btn>
+                    </template>
+                </v-list-item>
+            </v-list>
+        </v-navigation-drawer>
+
         <!-- Success Snackbar -->
         <v-snackbar v-model="showSuccessSnackbar" color="success" :timeout="3000" location="top">
             <v-icon start>mdi-check-circle</v-icon>
             Automation installed successfully!
+        </v-snackbar>
+
+        <!-- Dashboard Applied Snackbar (with deep link out of the ingress iframe) -->
+        <v-snackbar v-model="showDashboardSnackbar" color="success" :timeout="6000" location="top">
+            <v-icon start>mdi-check-circle</v-icon>
+            Dashboard applied!
+            <template #actions>
+                <v-btn v-if="dashboardLink" variant="text" :href="dashboardLink" target="_top"> Open dashboard </v-btn>
+            </template>
         </v-snackbar>
     </div>
 </template>
@@ -125,6 +186,8 @@ import { ref, onMounted } from 'vue';
 import AIChat from '@/components/AIChat.vue';
 import ErrorMessage from '@/components/ErrorMessage.vue';
 import { configService } from '@/services/configService';
+import { dashboardService, type DashboardSummary } from '@/services/dashboardService';
+import type { Artifact } from '@/types/chat';
 import type { APIError } from '@/types/errors';
 
 interface Automation {
@@ -146,6 +209,13 @@ const hasMessages = ref(false);
 const chatRef = ref<InstanceType<typeof AIChat> | null>(null);
 const currentError = ref<APIError | null>(null);
 const configError = ref<string | null>(null);
+
+// Dashboards
+const dashboards = ref<DashboardSummary[]>([]);
+const dashboardDrawer = ref(false);
+const dashboardsLoading = ref(false);
+const showDashboardSnackbar = ref(false);
+const dashboardLink = ref<string | null>(null);
 
 const checkConfiguration = async () => {
     const result = await configService.checkConfiguration();
@@ -180,6 +250,27 @@ const handleClearChat = async () => {
     }
 };
 
+const handleApplyArtifact = async (artifact: Artifact) => {
+    switch (artifact.kind) {
+        case 'automation':
+            await handleInstallAutomation(artifact.yaml);
+            break;
+        case 'dashboard':
+            await handleApplyDashboard(artifact.yaml);
+            break;
+        case 'script':
+        case 'scene':
+            // Phase 2 will add dedicated apply endpoints for scripts and scenes
+            currentError.value = {
+                error_code: 'UNKNOWN_ERROR',
+                context: {
+                    details: `Applying ${artifact.kind}s directly is not yet supported. The YAML has been generated — copy it and apply it manually via the Home Assistant UI (Settings → Automations & Scenes).`,
+                },
+            };
+            break;
+    }
+};
+
 const handleInstallAutomation = async (yaml: string) => {
     try {
         const response = await fetch('api/install_automation', {
@@ -198,12 +289,9 @@ const handleInstallAutomation = async (yaml: string) => {
 
         await fetchAutomations();
         showSuccessSnackbar.value = true;
-        currentError.value = null; // Clear errors on success
-        console.log('Automation installed successfully');
+        currentError.value = null;
     } catch (error) {
         console.error('Failed to install automation:', error);
-
-        // Show structured error instead of alert
         currentError.value = {
             error_code: 'UNKNOWN_ERROR',
             context: {
@@ -220,6 +308,59 @@ const handleEditAutomation = (automation: Automation) => {
     } else {
         prompt.value = `Edit: "${automation.alias}" (${automation.entity_id})`;
     }
+};
+
+// Build a deep link to a dashboard that escapes the ingress iframe (target="_top").
+const dashboardUrl = (urlPath: string | null | undefined): string => {
+    return urlPath ? `/${urlPath}` : '/lovelace';
+};
+
+const handleApplyDashboard = async (yaml: string) => {
+    // The model marks the target dashboard with `# aitomation_url_path: <slug>` when
+    // modifying or naming a dashboard. Without it we always create a new dashboard so we
+    // never clobber the user's default dashboard.
+    const urlPathMatch = yaml.match(/^#\s*aitomation_url_path:\s*(\S+)/im);
+    const targetUrlPath = urlPathMatch ? urlPathMatch[1] : null;
+    const exists = targetUrlPath ? dashboards.value.some((d) => d.url_path === targetUrlPath) : false;
+
+    const result = await dashboardService.applyDashboard({
+        config_yaml: yaml,
+        url_path: targetUrlPath,
+        create: !exists, // existing dashboard => save in place; otherwise create
+    });
+
+    if (!result.success) {
+        currentError.value = {
+            error_code: result.error_code || 'UNKNOWN_ERROR',
+            context: { details: result.error || 'Failed to apply dashboard' },
+        };
+        return;
+    }
+
+    currentError.value = null;
+    dashboardLink.value = dashboardUrl(result.url_path);
+    showDashboardSnackbar.value = true;
+    await fetchDashboards();
+};
+
+const fetchDashboards = async () => {
+    dashboardsLoading.value = true;
+    try {
+        dashboards.value = await dashboardService.listDashboards();
+    } finally {
+        dashboardsLoading.value = false;
+    }
+};
+
+const handleEditDashboard = (dashboard: DashboardSummary) => {
+    dashboardDrawer.value = false;
+    const name = dashboard.title || dashboard.url_path || 'dashboard';
+    prompt.value = `Modify the "${name}" dashboard (url_path: ${dashboard.url_path ?? 'default'}): `;
+};
+
+const openDashboards = async () => {
+    dashboardDrawer.value = true;
+    await fetchDashboards();
 };
 
 const fetchAutomations = async () => {
@@ -243,6 +384,7 @@ const truncate = (text: string, length: number): string => {
 onMounted(async () => {
     await checkConfiguration();
     await fetchAutomations();
+    await fetchDashboards();
 });
 </script>
 

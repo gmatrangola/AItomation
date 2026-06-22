@@ -149,6 +149,31 @@ export class ErrorService {
             steps: ['Please provide a valid prompt and try again'],
         }),
 
+        DASHBOARD_ERROR: (_ctx) => ({
+            icon: '📊',
+            title: 'Dashboard operation failed',
+            description: 'Could not read or write the Lovelace dashboard.',
+            steps: [
+                'Ensure Home Assistant is reachable from the add-on',
+                'Verify the add-on has Home Assistant API access enabled',
+                'Check the add-on logs for the WebSocket error details',
+                'Try again in a few moments',
+            ],
+            detailsLabel: 'Dashboard error',
+        }),
+
+        DASHBOARD_READONLY: (_ctx) => ({
+            icon: '🔒',
+            title: 'Dashboard is in YAML mode',
+            description: 'This dashboard is managed in YAML mode and cannot be edited from the app.',
+            steps: [
+                'YAML-mode dashboards can only be edited by changing their YAML files directly',
+                'Create a new storage-mode dashboard instead',
+                'Or copy the generated YAML into your dashboard file manually',
+            ],
+            detailsLabel: 'Dashboard error',
+        }),
+
         UNKNOWN_ERROR: (_ctx) => ({
             icon: '❌',
             title: 'An unexpected error occurred',

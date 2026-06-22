@@ -21,11 +21,19 @@
             <!-- Assistant messages - markdown with syntax highlighting -->
             <div v-else class="markdown-content" v-html="renderMarkdown(message.content)"></div>
 
-            <!-- Install button for messages with YAML -->
-            <div v-if="message.yaml && showInstallButton" class="chat-message__actions mt-2">
-                <v-btn color="success" variant="elevated" size="small" @click="$emit('install', message.yaml)">
-                    <v-icon start size="small">mdi-download</v-icon>
-                    Install
+            <!-- Per-artifact action buttons -->
+            <div v-if="messageArtifacts.length && showInstallButton" class="chat-message__actions mt-2">
+                <v-btn
+                    v-for="(artifact, i) in messageArtifacts"
+                    :key="i"
+                    :color="artifactColor(artifact.kind)"
+                    variant="elevated"
+                    size="small"
+                    class="mr-2"
+                    @click="$emit('apply-artifact', artifact)"
+                >
+                    <v-icon start size="small">{{ artifactIcon(artifact.kind) }}</v-icon>
+                    {{ artifactLabel(artifact.kind) }}
                 </v-btn>
             </div>
         </div>
@@ -33,8 +41,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useMarkdown } from '@/composables/useMarkdown';
-import type { ChatMessage } from '@/types/chat';
+import type { Artifact, ArtifactKind, ChatMessage } from '@/types/chat';
 
 const { renderMarkdown } = useMarkdown();
 
@@ -43,13 +52,61 @@ interface Props {
     showInstallButton?: boolean;
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
     showInstallButton: true,
 });
 
 defineEmits<{
-    install: [yaml: string];
+    'apply-artifact': [artifact: Artifact];
 }>();
+
+// Normalize to Artifact[] — supports new messages (artifacts[]) and legacy (yaml/artifactKind)
+const messageArtifacts = computed((): Artifact[] => {
+    if (props.message.artifacts?.length) return props.message.artifacts;
+    if (props.message.yaml) {
+        return [{ yaml: props.message.yaml, kind: props.message.artifactKind ?? 'automation' }];
+    }
+    return [];
+});
+
+const artifactLabel = (kind: ArtifactKind): string => {
+    switch (kind) {
+        case 'dashboard':
+            return 'Apply Dashboard';
+        case 'script':
+            return 'Install Script';
+        case 'scene':
+            return 'Install Scene';
+        default:
+            return 'Install Automation';
+    }
+};
+
+const artifactIcon = (kind: ArtifactKind): string => {
+    switch (kind) {
+        case 'dashboard':
+            return 'mdi-view-dashboard';
+        case 'script':
+            return 'mdi-script-text-outline';
+        case 'scene':
+            return 'mdi-palette-outline';
+        default:
+            return 'mdi-download';
+    }
+};
+
+const artifactColor = (kind: ArtifactKind): string => {
+    switch (kind) {
+        case 'dashboard':
+            return 'primary';
+        case 'script':
+            return 'secondary';
+        case 'scene':
+            return 'warning';
+        default:
+            return 'success';
+    }
+};
 
 const formatTime = (date: Date): string => {
     return new Intl.DateTimeFormat('en-US', {
@@ -123,7 +180,8 @@ const formatTime = (date: Date): string => {
 
 .chat-message__actions {
     display: flex;
-    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     padding-top: 0.5rem;
     border-top: 1px solid var(--ha-border);
 }

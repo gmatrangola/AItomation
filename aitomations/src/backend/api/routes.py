@@ -11,13 +11,16 @@ from flask import Blueprint, Response, current_app, jsonify, request, stream_wit
 
 from api.config import (
     ADDON_STATE_FILE,
+    DATA_DIR,
     HA_API_URL,
     HA_HEADERS,
     PROMPTS_DIR,
     SUPERVISOR_TOKEN,
 )
 from api.context import get_ha_context
+from api.docs_cache import get_docs_reference
 from api.errors import APIError
+from api.lovelace import LovelaceClient
 from api.options import get_options
 from api.prompting import render_system_prompt
 from llm.gemini import GeminiProvider
@@ -27,7 +30,7 @@ api_blueprint = Blueprint("api", __name__)
 
 # --- Constants ---
 AITOMATIONS_METADATA_KEY = "aitomations_metadata"
-CHAT_HISTORY_FILE = "/data/chat_history.json"
+CHAT_HISTORY_FILE = os.path.join(DATA_DIR, "chat_history.json")
 
 
 # --- Helper Functions ---
@@ -190,7 +193,7 @@ def load_chat_history():
         if not os.path.exists(CHAT_HISTORY_FILE):
             return jsonify({"messages": []})
 
-        with open(CHAT_HISTORY_FILE, "r") as f:
+        with open(CHAT_HISTORY_FILE) as f:
             data = json.load(f)
 
         messages = data.get("messages", [])
@@ -244,7 +247,7 @@ def save_chat_history():
 def clear_chat_history():
     """Clear persisted chat history."""
     try:
-        storage_path = "/data/chat_history.json"
+        storage_path = CHAT_HISTORY_FILE
 
         if os.path.exists(storage_path):
             os.remove(storage_path)
@@ -341,17 +344,24 @@ def generate_automation_stream():
                     "entities": len(ha_context.get("entities", [])),
                     "services": len(ha_context.get("services", [])),
                     "automations": len(ha_context.get("automations", [])),
+                    "dashboards": len(ha_context.get("dashboards", [])),
                     "prompt_length": len(full_context) + len(history_text),
                     "history_messages": len(trimmed_history),
                 },
             }
             yield f"data: {json.dumps(context_stats)}\n\n"
 
+            # Resolve an up-to-date API reference based on the running HA version.
+            ha_version = (ha_context.get("config") or {}).get("version")
+            auto_fetch_docs = bool(options.get("auto_fetch_docs", True))
+            docs_reference = get_docs_reference(ha_version, auto_fetch=auto_fetch_docs)
+
             current_app.logger.info("🔨 Rendering system prompt from template...")
             creation_prompt = render_system_prompt(
                 ha_context=ha_context,
                 user_request=full_context,
                 chat_history=trimmed_history,
+                docs_reference=docs_reference,
             )
 
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'generating', 'provider': llm_provider_name})}\n\n"
@@ -452,6 +462,65 @@ def install_automation():
         return jsonify(response.json())
     except Exception as e:
         current_app.logger.error(f"❌ Error in install_automation: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@api_blueprint.route("/dashboards")
+def get_dashboards():
+    """List existing Lovelace dashboards (via the HA WebSocket API)."""
+    try:
+        with LovelaceClient() as client:
+            dashboards = client.list_dashboards()
+        return jsonify(dashboards)
+    except APIError as e:
+        current_app.logger.error("❌ Error listing dashboards: %s", e.context)
+        return jsonify({"error_code": e.code.value, "context": e.context}), 502
+    except Exception as e:  # noqa: BLE001
+        current_app.logger.error("❌ Unexpected error listing dashboards: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+def _slugify_url_path(title: str) -> str:
+    """Build a valid Lovelace url_path from a title (HA requires a hyphen)."""
+    slug = re.sub(r"[^\w-]", "", re.sub(r"\s+", "-", (title or "").strip().lower()))
+    slug = slug.strip("-") or "dashboard"
+    if "-" not in slug:
+        slug = f"{slug}-view"
+    return slug
+
+
+@api_blueprint.route("/apply_dashboard", methods=["POST"])
+def apply_dashboard():
+    """Create and/or save a Lovelace dashboard config (via the HA WebSocket API)."""
+    try:
+        data = request.get_json() or {}
+        config_yaml = data.get("config_yaml")
+        if not config_yaml:
+            return jsonify({"error_code": "INVALID_INPUT", "context": {"field": "config_yaml"}}), 400
+
+        config = yaml.safe_load(config_yaml)
+        if not isinstance(config, dict):
+            return jsonify({"error_code": "INVALID_INPUT", "context": {"field": "config_yaml"}}), 400
+
+        url_path = data.get("url_path")  # None => default dashboard
+        create = bool(data.get("create", False))
+        title = data.get("title") or config.get("title") or "AItomation Dashboard"
+
+        with LovelaceClient() as client:
+            if create:
+                if not url_path:
+                    url_path = _slugify_url_path(title)
+                current_app.logger.info("🆕 Creating dashboard '%s' (url_path=%s)", title, url_path)
+                client.create_dashboard(url_path, title)
+            client.save_dashboard_config(url_path, config)
+
+        current_app.logger.info("✅ Dashboard applied (url_path=%s)", url_path)
+        return jsonify({"success": True, "url_path": url_path})
+    except APIError as e:
+        current_app.logger.error("❌ Error applying dashboard: %s", e.context)
+        return jsonify({"error_code": e.code.value, "context": e.context}), 502
+    except Exception as e:  # noqa: BLE001
+        current_app.logger.error("❌ Unexpected error applying dashboard: %s", e)
         return jsonify({"error": str(e)}), 500
 
 

@@ -201,7 +201,7 @@ dev-frontend: ## Run frontend dev server
 	cd $(FRONTEND_DIR) && pnpm run dev
 
 dev-backend: ## Run backend dev server
-	cd $(BACKEND_DIR) && python3 app.py
+	mkdir -p $(CURDIR)/.dev-data && cd $(BACKEND_DIR) && AITOMATIONS_DATA_DIR=$(CURDIR)/.dev-data python3 app.py
 
 watch: ## Watch and rebuild on changes
 	cd $(FRONTEND_DIR) && pnpm run build -- --watch

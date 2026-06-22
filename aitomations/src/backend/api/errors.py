@@ -27,6 +27,10 @@ class ErrorCode(str, Enum):
     # LLM errors
     LLM_ERROR = "LLM_ERROR"
 
+    # Dashboard / Lovelace errors
+    DASHBOARD_ERROR = "DASHBOARD_ERROR"
+    DASHBOARD_READONLY = "DASHBOARD_READONLY"
+
     # Input validation
     INVALID_INPUT = "INVALID_INPUT"
 

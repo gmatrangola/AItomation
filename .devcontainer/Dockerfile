@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y curl \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+RUN npm install -g @anthropic-ai/claude-code
+
 # Enable corepack for pnpm support
 RUN corepack enable
 

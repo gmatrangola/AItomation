@@ -43,8 +43,14 @@ node_modules/
 aitomations/src/frontend/dist
 aitomations/src/frontend/.vite
 
+# Scratch handoff notes (not for commit)
+HANDOFF.md
+
 # Make cache
 .make-cache/
+
+# Local dev data dir (replaces /data when running outside HA container)
+.dev-data/
 
 # TypeScript incremental cache
 node_modules/.cache/

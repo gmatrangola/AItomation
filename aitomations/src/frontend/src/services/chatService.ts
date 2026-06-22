@@ -1,4 +1,4 @@
-import type { ChatMessage } from '@/types/chat';
+import type { Artifact, ArtifactKind, ChatMessage } from '@/types/chat';
 import type { APIError } from '@/types/errors';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -129,13 +129,17 @@ export class ChatService {
                 }
             }
 
+            const artifacts = this.extractArtifactsFromMarkdown(fullResponse || '');
             return {
                 message: {
                     id: uuidv4(),
                     role: 'assistant',
                     content: fullResponse || 'No response received',
                     timestamp: new Date(),
-                    yaml: this.extractYamlFromMarkdown(fullResponse || ''),
+                    artifacts,
+                    // Legacy fields for backward compat with existing chat history
+                    yaml: artifacts[0]?.yaml,
+                    artifactKind: artifacts[0]?.kind,
                 },
             };
         } catch (error) {
@@ -173,9 +177,22 @@ export class ChatService {
         }
     }
 
-    private extractYamlFromMarkdown(markdown: string): string | undefined {
-        if (!markdown) return undefined;
-        const match = markdown.match(/```yaml\n([\s\S]*?)\n```/);
-        return match ? match[1].trim() : undefined;
+    private extractArtifactsFromMarkdown(markdown: string): Artifact[] {
+        if (!markdown) return [];
+        const artifacts: Artifact[] = [];
+        const regex = /```yaml\n([\s\S]*?)\n```/g;
+        let match;
+        while ((match = regex.exec(markdown)) !== null) {
+            const yaml = match[1].trim();
+            // Only process blocks that carry our kind marker
+            const kindMatch = yaml.match(/#\s*aitomation_kind:\s*(automation|dashboard|script|scene)/i);
+            if (!kindMatch) continue;
+            const kind = kindMatch[1].toLowerCase() as ArtifactKind;
+            const idMatch = yaml.match(/#\s*aitomation_id:\s*(\S+)/i);
+            const artifact: Artifact = { yaml, kind };
+            if (idMatch) artifact.id = idMatch[1];
+            artifacts.push(artifact);
+        }
+        return artifacts;
     }
 }

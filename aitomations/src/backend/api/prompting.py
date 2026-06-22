@@ -40,6 +40,7 @@ def render_system_prompt(
     ha_context: dict[str, Any],
     user_request: str,
     chat_history: list[dict[str, Any]] | None = None,
+    docs_reference: str = "",
 ) -> str:
     """Render the system prompt using the configured Jinja2 template."""
     _log_prompts_dir()
@@ -60,6 +61,7 @@ def render_system_prompt(
             ha_context=ha_context,
             user_request=user_request,
             chat_history=chat_history,
+            docs_reference=docs_reference,
         )
 
         current_app.logger.debug("=== Rendered system prompt start ===")

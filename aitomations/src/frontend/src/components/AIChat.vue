@@ -26,8 +26,8 @@
                     v-for="message in messages"
                     :key="message.id"
                     :message="message"
-                    :show-install-button="message.yaml === latestYaml"
-                    @install="handleInstallAutomation"
+                    :show-install-button="message.id === lastArtifactMessageId"
+                    @apply-artifact="handleApplyArtifact"
                 />
 
                 <!-- Connecting State - Show immediately while waiting for backend -->
@@ -206,9 +206,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useChat } from '@/composables/useChat';
 import ChatMessage from './ChatMessage.vue';
+import type { Artifact } from '@/types/chat';
 import type { APIError } from '@/types/errors';
 import { marked } from 'marked';
 
@@ -216,7 +217,6 @@ const {
     messages,
     isGenerating,
     isConnecting,
-    latestYaml,
     streamingMessage,
     currentError,
     progressInfo,
@@ -224,6 +224,12 @@ const {
     clearChat,
     clearError,
 } = useChat();
+
+// ID of the most recent assistant message that has artifacts — only that one shows apply buttons
+const lastArtifactMessageId = computed(() => {
+    const withArtifacts = messages.value.filter((m) => m.role === 'assistant' && (m.artifacts?.length || m.yaml));
+    return withArtifacts[withArtifacts.length - 1]?.id;
+});
 
 interface Props {
     modelValue?: string;
@@ -234,7 +240,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-    'install-automation': [yaml: string];
+    'apply-artifact': [artifact: Artifact];
     'update:modelValue': [value: string];
     'has-messages': [hasMessages: boolean];
     error: [error: APIError];
@@ -244,7 +250,12 @@ const internalPrompt = ref(props.modelValue);
 const messagesContainer = ref<HTMLElement>();
 const isSending = ref(false); // Add local sending state
 
-const examplePrompts = ['Turn on lights at sunset', 'Notify me when door opens', 'Coffee maker on weekdays at 7am'];
+const examplePrompts = [
+    'Turn on lights at sunset',
+    'Notify me when door opens',
+    'Create a dashboard for the living room',
+    'Add a weather card to my dashboard',
+];
 
 // Simple markdown renderer for streaming content
 const renderMarkdown = (content: string): string => {
@@ -325,8 +336,8 @@ const selectExample = (example: string) => {
     handleSend();
 };
 
-const handleInstallAutomation = (yaml: string) => {
-    emit('install-automation', yaml);
+const handleApplyArtifact = (artifact: Artifact) => {
+    emit('apply-artifact', artifact);
 };
 
 // Expose clearChat for parent component

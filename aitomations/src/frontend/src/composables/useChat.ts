@@ -117,7 +117,9 @@ export function useChat() {
                     role: 'assistant',
                     content: result.message.content,
                     timestamp: new Date(),
+                    artifacts: result.message.artifacts,
                     yaml: result.message.yaml,
+                    artifactKind: result.message.artifactKind,
                 };
 
                 messages.value.push(assistantMessage);

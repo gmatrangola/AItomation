@@ -1,6 +1,6 @@
 {
   "name": "AItomations Creator",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "slug": "aitomations-creator",
   "image": "gmatrangola/aitomations-{arch}",
   "description": "Create Home Assistant automations using LLMs like Gemini or Ollama.",
@@ -27,7 +27,8 @@
     "ollama_api_url": "http://host.local:11434/api/generate",
     "ollama_model": "llama3",
     "request_timeout": 120,
-    "system_prompt_template": ""
+    "system_prompt_template": "",
+    "auto_fetch_docs": true
   },
   "schema": {}
 }

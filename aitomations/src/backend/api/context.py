@@ -6,6 +6,7 @@ import requests
 from flask import current_app
 
 from api.config import HA_API_URL, HA_HEADERS  # reuse existing constants
+from api.lovelace import list_dashboards
 
 
 def _ha_get(path: str) -> Any:
@@ -13,6 +14,26 @@ def _ha_get(path: str) -> Any:
     resp = requests.get(url, headers=HA_HEADERS, timeout=10)
     resp.raise_for_status()
     return resp.json()
+
+
+def _get_dashboards_summary() -> list[dict[str, Any]]:
+    """Compact list of existing dashboards (degrades to [] on any failure)."""
+    try:
+        dashboards = list_dashboards()
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.warning("⚠️ Failed to fetch dashboards summary: %s", exc)
+        return []
+
+    summary: list[dict[str, Any]] = []
+    for dash in dashboards:
+        summary.append(
+            {
+                "title": dash.get("title"),
+                "url_path": dash.get("url_path"),
+                "mode": dash.get("mode"),
+            }
+        )
+    return summary
 
 
 def get_ha_context() -> tuple[dict, str]:
@@ -32,6 +53,7 @@ def get_ha_context() -> tuple[dict, str]:
         context["config"] = {
             "time_zone": config.get("time_zone"),
             "unit_system": config.get("unit_system", {}).get("name"),
+            "version": config.get("version"),
         }
     except Exception as exc:  # noqa: BLE001
         current_app.logger.warning(f"⚠️ Failed to fetch /config: {exc}")
@@ -149,11 +171,15 @@ def get_ha_context() -> tuple[dict, str]:
         current_app.logger.error("❌ Failed to fetch automations summary", exc_info=True)
         context.setdefault("automations", [])
 
+    # --- Dashboards (Lovelace, via WebSocket; degrades to []) ---
+    context["dashboards"] = _get_dashboards_summary()
+
     summary = (
         f"entities={len(context.get('entities', []))}, "
         f"services={len(context.get('services', []))}, "
         f"automations={len(context.get('automations', []))}, "
-        f"areas={len(context.get('areas', []))}"
+        f"areas={len(context.get('areas', []))}, "
+        f"dashboards={len(context.get('dashboards', []))}"
     )
     current_app.logger.info(f"✅ HA context ready: {summary}")
 
