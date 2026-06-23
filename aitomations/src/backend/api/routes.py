@@ -19,7 +19,7 @@ from api.config import (
 )
 from api.context import get_ha_context
 from api.docs_cache import get_docs_reference
-from api.errors import APIError
+from api.errors import APIError, ErrorCode
 from api.lovelace import LovelaceClient
 from api.options import get_options
 from api.prompting import render_system_prompt
@@ -427,41 +427,110 @@ def generate_automation_stream():
     )
 
 
+# Kinds that can be applied through the HA config REST API (POST /api/config/<kind>/config/<id>).
+# The kind value is the HA domain itself, so it slots straight into the endpoint URL. Helper
+# domains (input_*, timer, counter) use the same storage-backed config collection API.
+APPLY_KINDS = (
+    "automation",
+    "script",
+    "scene",
+    "input_boolean",
+    "input_number",
+    "input_select",
+    "input_text",
+    "input_datetime",
+    "input_button",
+    "timer",
+    "counter",
+)
+
+
+def _apply_config_entity(
+    kind: str | None, entity_id: str | None, config_yaml: str, prompt: str | None = None
+) -> dict[str, Any]:
+    """Parse a generated YAML config and POST it to HA's config REST API for the given kind.
+
+    Returns a dict with at least an ``id`` key. Raises ``APIError`` for unsupported kinds
+    or malformed YAML.
+    """
+    if kind not in APPLY_KINDS:
+        raise APIError(ErrorCode.UNSUPPORTED_KIND, {"kind": kind, "supported": list(APPLY_KINDS)})
+
+    config = yaml.safe_load(config_yaml)
+    if isinstance(config, list):
+        config = config[0]
+    if not isinstance(config, dict):
+        raise APIError(ErrorCode.INVALID_INPUT, {"field": "yaml"})
+
+    # Attach provenance metadata so the automation list view can surface the originating
+    # prompt. HA stores arbitrary keys for automations; scripts/scenes validate against a
+    # stricter schema, so only automations get the metadata key.
+    if prompt and kind == "automation":
+        options = get_effective_config()
+        config[AITOMATIONS_METADATA_KEY] = {
+            "source": "aitomations_addon",
+            "prompt": prompt,
+            "llm_provider": options.get("llm_provider"),
+            "model": options.get("gemini_model")
+            if options.get("llm_provider") == "gemini"
+            else options.get("ollama_model"),
+            "timestamp": int(time.time()),
+        }
+
+    # Resolve the object id: explicit (from the # aitomation_id marker) > config id > slug.
+    object_id = entity_id or config.get("id")
+    if not object_id:
+        name = config.get("alias") or config.get("name") or f"New {kind}"
+        slug = re.sub(r"[^\w-]", "", re.sub(r"\s+", "_", str(name)).lower())
+        object_id = f"{slug}_{int(time.time())}"
+
+    # Automations carry their id inside the stored config; scripts/scenes key off the URL only.
+    if kind == "automation":
+        config["id"] = object_id
+
+    install_url = f"{HA_API_URL}/config/{kind}/config/{object_id}"
+    response = requests.post(install_url, headers=HA_HEADERS, json=config, timeout=15)
+    response.raise_for_status()
+
+    result = response.json() if response.content else {}
+    if not isinstance(result, dict):
+        result = {"result": result}
+    result.setdefault("id", object_id)
+    return result
+
+
 @api_blueprint.route("/install_automation", methods=["POST"])
 def install_automation():
     try:
         data = request.get_json()
         automation_yaml = data["automation_yaml"]
-        prompt = data.get("prompt")
-
-        config = yaml.safe_load(automation_yaml)
-        if isinstance(config, list):
-            config = config[0]
-
-        if prompt:
-            options = get_effective_config()
-            config[AITOMATIONS_METADATA_KEY] = {
-                "source": "aitomations_addon",
-                "prompt": prompt,
-                "llm_provider": options.get("llm_provider"),
-                "model": options.get("gemini_model")
-                if options.get("llm_provider") == "gemini"
-                else options.get("ollama_model"),
-                "timestamp": int(time.time()),
-            }
-
-        if "id" not in config or not config["id"]:
-            alias = config.get("alias", "New AItomation")
-            slug = re.sub(r"[^\w-]", "", re.sub(r"\s+", "_", alias).lower())
-            config["id"] = f"{slug}_{int(time.time())}"
-
-        install_url = f"http://supervisor/core/api/config/automation/config/{config['id']}"
-        response = requests.post(install_url, headers=HA_HEADERS, json=config, timeout=15)
-        response.raise_for_status()
-
-        return jsonify(response.json())
+        result = _apply_config_entity("automation", None, automation_yaml, data.get("prompt"))
+        return jsonify(result)
     except Exception as e:
         current_app.logger.error(f"❌ Error in install_automation: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@api_blueprint.route("/apply_entity", methods=["POST"])
+def apply_entity():
+    """Apply a generated config entity (automation/script/scene) to Home Assistant."""
+    try:
+        data = request.get_json() or {}
+        kind = data.get("kind")
+        config_yaml = data.get("yaml")
+
+        if not config_yaml:
+            return jsonify({"error_code": "INVALID_INPUT", "context": {"field": "yaml"}}), 400
+
+        result = _apply_config_entity(kind, data.get("id"), config_yaml, data.get("prompt"))
+        current_app.logger.info("✅ Applied %s (id=%s)", kind, result.get("id"))
+        return jsonify({"success": True, "kind": kind, "id": result.get("id")})
+    except APIError as e:
+        current_app.logger.error("❌ apply_entity APIError: %s %s", e.code.value, e.context)
+        status = 400 if e.code in (ErrorCode.UNSUPPORTED_KIND, ErrorCode.INVALID_INPUT) else 502
+        return jsonify({"error_code": e.code.value, "context": e.context}), status
+    except Exception as e:  # noqa: BLE001
+        current_app.logger.error("❌ Error in apply_entity: %s", e)
         return jsonify({"error": str(e)}), 500
 
 

@@ -33,6 +33,7 @@ class ErrorCode(str, Enum):
 
     # Input validation
     INVALID_INPUT = "INVALID_INPUT"
+    UNSUPPORTED_KIND = "UNSUPPORTED_KIND"
 
     # Generic
     UNKNOWN_ERROR = "UNKNOWN_ERROR"

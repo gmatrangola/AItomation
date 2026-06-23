@@ -172,8 +172,8 @@ Use the following recent messages to maintain context and refinement:
    - Then provide **one YAML block per artifact** (automation, dashboard, script, or scene).
    - If a dashboard references a script that doesn't exist yet, emit the **script block first**, then the **dashboard block** — they will be applied in order.
    - **Every block MUST begin with these marker comments** (the app uses them to route each block):
-     - Line 1: `# aitomation_kind: <kind>` where kind is `automation`, `dashboard`, `script`, or `scene`.
-     - Line 2: `# aitomation_id: <slug>` — a unique lowercase snake_case identifier (e.g. `turn_off_all_lights`). Required for `script` and `scene`; optional for `automation`; omit for `dashboard`.
+     - Line 1: `# aitomation_kind: <kind>` where kind is `automation`, `dashboard`, `script`, `scene`, or a **helper domain**: `input_boolean`, `input_number`, `input_select`, `input_text`, `input_datetime`, `input_button`, `timer`, or `counter`.
+     - Line 2: `# aitomation_id: <slug>` — a unique lowercase snake_case identifier (e.g. `turn_off_all_lights`). Required for `script`, `scene`, and all helper kinds; optional for `automation`; omit for `dashboard`.
      - Line 3 (dashboards only): `# aitomation_url_path: <slug>` — when **modifying** an existing dashboard use its exact `url_path`; when **creating a new named** dashboard use a new lowercase hyphenated slug; omit only if deriving from the title.
    - YAML blocks without a `# aitomation_kind:` marker on the first line are treated as illustrative only and will not show an apply button.
 
@@ -222,6 +222,31 @@ entities:
   light.living_room:
     state: on
     brightness: 128
+```
+
+### Helper block
+
+Helpers back automations, scripts, and dashboards (e.g. an `input_boolean` toggle a
+dashboard switch writes to, or an `input_number` a script reads). When the request needs
+state that doesn't exist yet, emit the helper block **first** so dependent blocks can
+reference it. Use the helper domain as the kind. The block body is the helper's config
+(`name`, plus domain-specific fields).
+
+```yaml
+# aitomation_kind: input_boolean
+# aitomation_id: vacation_mode
+name: Vacation Mode
+icon: mdi-beach
+```
+
+```yaml
+# aitomation_kind: input_number
+# aitomation_id: target_temperature
+name: Target Temperature
+min: 15
+max: 28
+step: 0.5
+unit_of_measurement: "°C"
 ```
 
 ### Dashboard block

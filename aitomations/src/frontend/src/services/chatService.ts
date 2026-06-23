@@ -1,4 +1,4 @@
-import type { Artifact, ArtifactKind, ChatMessage } from '@/types/chat';
+import { ARTIFACT_KINDS, type Artifact, type ArtifactKind, type ChatMessage } from '@/types/chat';
 import type { APIError } from '@/types/errors';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -184,10 +184,11 @@ export class ChatService {
         let match;
         while ((match = regex.exec(markdown)) !== null) {
             const yaml = match[1].trim();
-            // Only process blocks that carry our kind marker
-            const kindMatch = yaml.match(/#\s*aitomation_kind:\s*(automation|dashboard|script|scene)/i);
+            // Only process blocks that carry our kind marker with a recognized kind
+            const kindMatch = yaml.match(/#\s*aitomation_kind:\s*([a-z_]+)/i);
             if (!kindMatch) continue;
             const kind = kindMatch[1].toLowerCase() as ArtifactKind;
+            if (!ARTIFACT_KINDS.includes(kind)) continue;
             const idMatch = yaml.match(/#\s*aitomation_id:\s*(\S+)/i);
             const artifact: Artifact = { yaml, kind };
             if (idMatch) artifact.id = idMatch[1];

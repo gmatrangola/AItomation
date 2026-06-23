@@ -170,6 +170,12 @@
             Automation installed successfully!
         </v-snackbar>
 
+        <!-- Script / Scene Applied Snackbar -->
+        <v-snackbar v-model="showEntitySnackbar" color="success" :timeout="3000" location="top">
+            <v-icon start>mdi-check-circle</v-icon>
+            {{ entitySnackbarText }}
+        </v-snackbar>
+
         <!-- Dashboard Applied Snackbar (with deep link out of the ingress iframe) -->
         <v-snackbar v-model="showDashboardSnackbar" color="success" :timeout="6000" location="top">
             <v-icon start>mdi-check-circle</v-icon>
@@ -187,6 +193,7 @@ import AIChat from '@/components/AIChat.vue';
 import ErrorMessage from '@/components/ErrorMessage.vue';
 import { configService } from '@/services/configService';
 import { dashboardService, type DashboardSummary } from '@/services/dashboardService';
+import { entityService } from '@/services/entityService';
 import type { Artifact } from '@/types/chat';
 import type { APIError } from '@/types/errors';
 
@@ -205,6 +212,8 @@ const automations = ref<Automation[]>([]);
 const drawer = ref(false);
 const prompt = ref('');
 const showSuccessSnackbar = ref(false);
+const showEntitySnackbar = ref(false);
+const entitySnackbarText = ref('');
 const hasMessages = ref(false);
 const chatRef = ref<InstanceType<typeof AIChat> | null>(null);
 const currentError = ref<APIError | null>(null);
@@ -258,17 +267,32 @@ const handleApplyArtifact = async (artifact: Artifact) => {
         case 'dashboard':
             await handleApplyDashboard(artifact.yaml);
             break;
-        case 'script':
-        case 'scene':
-            // Phase 2 will add dedicated apply endpoints for scripts and scenes
-            currentError.value = {
-                error_code: 'UNKNOWN_ERROR',
-                context: {
-                    details: `Applying ${artifact.kind}s directly is not yet supported. The YAML has been generated — copy it and apply it manually via the Home Assistant UI (Settings → Automations & Scenes).`,
-                },
-            };
+        default:
+            // script, scene, and helper kinds (input_*, timer, counter) all apply
+            // through the generic /apply_entity config endpoint.
+            await handleApplyEntity(artifact);
             break;
     }
+};
+
+const handleApplyEntity = async (artifact: Artifact) => {
+    const result = await entityService.applyEntity(artifact, prompt.value);
+
+    if (!result.success) {
+        currentError.value = {
+            error_code: result.error_code || 'UNKNOWN_ERROR',
+            context: { details: result.error || `Failed to apply ${artifact.kind}` },
+        };
+        return;
+    }
+
+    currentError.value = null;
+    const label = artifact.kind
+        .split('_')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    entitySnackbarText.value = `${label} installed successfully!`;
+    showEntitySnackbar.value = true;
 };
 
 const handleInstallAutomation = async (yaml: string) => {

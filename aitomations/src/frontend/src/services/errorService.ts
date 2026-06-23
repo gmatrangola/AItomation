@@ -174,6 +174,18 @@ export class ErrorService {
             detailsLabel: 'Dashboard error',
         }),
 
+        UNSUPPORTED_KIND: (ctx) => ({
+            icon: '🚧',
+            title: `Cannot apply '${ctx.kind}' directly`,
+            description: 'This kind of artifact does not have an automatic apply path yet.',
+            steps: [
+                'Copy the generated YAML from the chat',
+                'Open Home Assistant → Settings → Automations & Scenes',
+                'Create the item manually and paste the YAML',
+            ],
+            detailsLabel: 'Unsupported kind',
+        }),
+
         UNKNOWN_ERROR: (_ctx) => ({
             icon: '❌',
             title: 'An unexpected error occurred',

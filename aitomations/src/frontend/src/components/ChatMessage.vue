@@ -43,7 +43,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useMarkdown } from '@/composables/useMarkdown';
-import type { Artifact, ArtifactKind, ChatMessage } from '@/types/chat';
+import { HELPER_KINDS, type Artifact, type ArtifactKind, type ChatMessage } from '@/types/chat';
 
 const { renderMarkdown } = useMarkdown();
 
@@ -69,7 +69,15 @@ const messageArtifacts = computed((): Artifact[] => {
     return [];
 });
 
+// Turn a helper domain like `input_boolean` into a friendly name like "Input Boolean".
+const prettyKind = (kind: ArtifactKind): string =>
+    kind
+        .split('_')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+
 const artifactLabel = (kind: ArtifactKind): string => {
+    if (HELPER_KINDS.has(kind)) return `Create ${prettyKind(kind)}`;
     switch (kind) {
         case 'dashboard':
             return 'Apply Dashboard';
@@ -83,6 +91,7 @@ const artifactLabel = (kind: ArtifactKind): string => {
 };
 
 const artifactIcon = (kind: ArtifactKind): string => {
+    if (HELPER_KINDS.has(kind)) return 'mdi-tune-variant';
     switch (kind) {
         case 'dashboard':
             return 'mdi-view-dashboard';
@@ -96,6 +105,7 @@ const artifactIcon = (kind: ArtifactKind): string => {
 };
 
 const artifactColor = (kind: ArtifactKind): string => {
+    if (HELPER_KINDS.has(kind)) return 'info';
     switch (kind) {
         case 'dashboard':
             return 'primary';
