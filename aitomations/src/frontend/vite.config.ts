@@ -2,9 +2,35 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import vuetify from 'vite-plugin-vuetify';
 import { fileURLToPath, URL } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'));
+
+function gitCommit(): string {
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+    const dirty =
+      execSync('git status --porcelain', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().length > 0;
+    return dirty ? `${sha}-dirty` : sha;
+  } catch {
+    return 'unknown';
+  }
+}
+
+const buildInfo = {
+  version: pkg.version as string,
+  commit: gitCommit(),
+  buildTime: new Date().toISOString(),
+};
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    __BUILD_INFO__: JSON.stringify(buildInfo),
+  },
   plugins: [
     vue(),
     vuetify({

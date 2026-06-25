@@ -22,6 +22,10 @@ export default [
       sourceType: 'module',
       parserOptions: {
         parser: typescript.parser
+      },
+      globals: {
+        // Injected at build time by Vite `define` (see vite.config.ts)
+        __BUILD_INFO__: 'readonly'
       }
     },
     rules: {

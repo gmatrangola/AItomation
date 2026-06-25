@@ -261,6 +261,16 @@
                     </v-card-actions>
                 </v-card>
             </v-dialog>
+
+            <!-- Build stamp -->
+            <div class="build-stamp secondary-text mt-6">
+                <v-icon size="x-small" class="mr-1">mdi-tag-outline</v-icon>
+                <span>v{{ buildInfo.version }}</span>
+                <span class="mx-2">·</span>
+                <span class="build-commit">{{ buildInfo.commit }}</span>
+                <span class="mx-2">·</span>
+                <span>built {{ buildTimeLocal }}</span>
+            </div>
         </v-container>
     </div>
 </template>
@@ -377,6 +387,10 @@ const filteredSuggestions = computed(() => {
 
 const router = useRouter();
 const showSetupRequired = ref(false);
+
+// Build stamp (injected at build time by Vite — see vite.config.ts)
+const buildInfo = __BUILD_INFO__;
+const buildTimeLocal = new Date(buildInfo.buildTime).toLocaleString();
 
 const loadConfiguration = async () => {
     try {
@@ -581,6 +595,18 @@ onMounted(() => {
 
 .config-header h2 {
     color: var(--ha-primary-text);
+}
+
+.build-stamp {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.build-stamp .build-commit {
+    font-family: 'Roboto Mono', monospace;
 }
 
 .primary-text {
