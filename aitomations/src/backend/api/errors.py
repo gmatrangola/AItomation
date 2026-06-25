@@ -1,10 +1,10 @@
 """Structured error types for API responses."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Standardized error codes for frontend localization."""
 
     # Connection errors

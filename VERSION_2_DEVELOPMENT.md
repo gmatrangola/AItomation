@@ -83,6 +83,56 @@ is low-urgency.
 
 ---
 
+## First-time laptop setup
+
+The `validate` / `build` / `deploy` targets need a toolchain that a bare machine won't have:
+**Node + pnpm** (frontend build) and **ruff / mypy / pytest** (backend checks). `make deploy`
+runs `build → validate`, so a missing tool fails the deploy early (e.g.
+`pnpm: command not found` or `ruff: command not found`).
+
+> Run these on the **machine that can reach your HA instance** (your laptop, on the same LAN
+> as the VM) — not inside a sandboxed/remote dev container, which has no route to `*.local`.
+
+### 1. Base toolchains (macOS + Homebrew)
+
+```bash
+brew install node pnpm          # Node for the build, pnpm for frontend deps
+```
+
+- No Homebrew? `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
+- Have Node ≥ 16.13 but no pnpm? `corepack enable pnpm` (ships with Node; use `sudo` if perms
+  fail) or `npm install -g pnpm`.
+
+### 2. Project + dev dependencies
+
+```bash
+make install            # pnpm install (frontend) + pip --user: ruff, mypy, pytest, type stubs
+# (or: make install-frontend / make install-backend individually)
+```
+
+### 3. Fix PATH for pip `--user` tools
+
+`make install` installs `ruff`/`mypy` with `pip3 install --user`, which lands in a user bin dir
+that is often **not** on `PATH` — so `ruff: command not found` can persist after a successful
+install. Add the user bin dir and re-source:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+# macOS framework Python may instead use ~/Library/Python/3.x/bin — add that if ~/.local/bin doesn't work
+```
+
+### 4. Verify before deploying
+
+```bash
+node --version && pnpm --version    # both resolve
+which ruff && which mypy            # both resolve
+make validate                       # full check passes locally
+```
+
+Once all four resolve, `make deploy TARGET=test` will get past the build/validate gate.
+
+---
+
 ## Validation (every change must pass)
 
 ```bash

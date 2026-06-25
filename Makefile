@@ -224,11 +224,7 @@ deploy: build ## Deploy to target (default: test). Usage: make deploy TARGET=pro
 	    $(BUILD_DIR)/ \
 	    $(HA_USER)@$(HA_HOST):$(HA_PATH)/
 	@echo "✓ Deployed to $(TARGET)"
-	@echo ""
-	@echo "Next steps:"
-	@echo "  1. Settings > Add-ons > Check for updates or reload"
-	@echo "  2. Restart the AItomations add-on"
-	@echo "  3. Hard refresh browser (Ctrl+Shift+R or Cmd+Shift+R)"
+	@$(MAKE) --no-print-directory apply TARGET=$(TARGET)
 
 deploy-test: ## Deploy to test instance
 	@$(MAKE) deploy TARGET=test
@@ -251,6 +247,22 @@ deploy-quick: ## Quick deploy without rebuild (use existing build)
 	    $(BUILD_DIR)/ \
 	    $(HA_USER)@$(HA_HOST):$(HA_PATH)/
 	@echo "✓ Deployed to $(TARGET)"
+	@$(MAKE) --no-print-directory apply TARGET=$(TARGET)
+
+apply: ## Reload Supervisor, build add-on from source, and start it (run after deploy)
+	@echo "Applying on $(TARGET) ($(HA_HOST))..."
+	@echo "  Reloading Supervisor add-on config (so it re-reads config.json)..."
+	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) "ha addons reload" >/dev/null 2>&1 || true
+	@echo "  Building from source (update if version changed, else rebuild)..."
+	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) \
+	    "ha addons update $(ADDON_FULL_SLUG) 2>/dev/null && echo '  -> updated to new version' || \
+	     (ha addons rebuild $(ADDON_FULL_SLUG) 2>/dev/null && echo '  -> rebuilt from source' || \
+	      echo '  -> no build performed (run: make status TARGET=$(TARGET))')"
+	@echo "  Starting add-on..."
+	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) "ha addons start $(ADDON_FULL_SLUG)" >/dev/null 2>&1 || true
+	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST) "ha addons info $(ADDON_FULL_SLUG) 2>/dev/null | grep -E 'state|version'" || true
+	@echo "✓ Applied on $(TARGET). Hard-refresh the browser (Cmd+Shift+R)."
+	@echo "  Logs: make logs TARGET=$(TARGET)"
 
 ssh: ## SSH into target instance
 	@ssh -p $(HA_PORT) $(HA_USER)@$(HA_HOST)
