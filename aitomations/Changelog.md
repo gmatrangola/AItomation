@@ -31,3 +31,17 @@ All notable changes to this project will be documented in this file.
   timer, counter) in addition to automations
 - Build stamp on the Configuration page (version, git commit, and build time)
   so you can tell which build is running
+
+## [1.1.1] - 2026-06-26
+
+### Added
+- Copy-to-clipboard button on every code block, plus a button to copy the whole
+  assistant response, so you can save and share generated ideas
+- Empty-state hint and examples now mention scripts, scenes, helpers, and dashboards
+
+### Fixed
+- Helpers (input_*/timer/counter) now apply correctly via the WebSocket
+  storage-collection API; they were POSTing to a REST config endpoint that does
+  not exist for helpers and failed with "404 Not Found"
+- Each artifact's apply button now appears inline directly under its YAML block,
+  instead of all buttons being grouped at the end of the response

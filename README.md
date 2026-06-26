@@ -6,7 +6,7 @@ This is the repository for the source code for the AITomations Home Assistant Ad
 
 The following information is for my reference and future contributors to the project. It might also serve as an example for efficently building Home Assistant Add Ons with a user interface and back end.
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## ✨ Features
