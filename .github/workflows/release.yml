@@ -125,7 +125,7 @@ jobs:
           node-version: '20'
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        run: npm install -g pnpm@10
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -165,7 +165,7 @@ jobs:
 
       - name: Install pnpm and build frontend
         run: |
-          npm install -g pnpm
+          npm install -g pnpm@10
           cd aitomations/src/frontend
           pnpm install --frozen-lockfile
           pnpm run build

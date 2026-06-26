@@ -6,7 +6,7 @@ ARG BUILD_FROM
 FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 # Install pnpm first (this layer rarely changes)
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10
 
 WORKDIR /usr/src/app
 
