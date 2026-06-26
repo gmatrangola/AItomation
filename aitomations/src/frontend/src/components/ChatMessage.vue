@@ -10,6 +10,16 @@
             <span class="chat-message__time">
                 {{ formatTime(message.timestamp) }}
             </span>
+            <v-btn
+                v-if="message.role === 'assistant' && message.content"
+                class="chat-message__copy-all"
+                :icon="copiedAll ? 'mdi-check' : 'mdi-content-copy'"
+                :color="copiedAll ? 'success' : undefined"
+                size="x-small"
+                variant="text"
+                :title="copiedAll ? 'Copied!' : 'Copy entire response'"
+                @click="copyAll"
+            />
         </div>
 
         <div class="chat-message__content">
@@ -19,8 +29,9 @@
             </div>
 
             <!-- Assistant messages - markdown with each artifact's apply button inline,
-                 directly after the YAML block it applies to -->
-            <template v-else>
+                 directly after the YAML block it applies to. The @click delegates copy-code
+                 buttons that useMarkdown injects into each code block. -->
+            <div v-else @click="onCopyCodeClick">
                 <template v-for="(seg, i) in contentSegments" :key="i">
                     <div v-if="seg.html" class="markdown-content" v-html="seg.html"></div>
                     <div v-if="seg.artifacts.length && showInstallButton" class="chat-message__actions">
@@ -37,13 +48,13 @@
                         </v-btn>
                     </div>
                 </template>
-            </template>
+            </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useMarkdown } from '@/composables/useMarkdown';
 import { ARTIFACT_KINDS, HELPER_KINDS, type Artifact, type ArtifactKind, type ChatMessage } from '@/types/chat';
 
@@ -160,6 +171,57 @@ const artifactColor = (kind: ArtifactKind): string => {
     }
 };
 
+// --- copy to clipboard ---
+const copiedAll = ref(false);
+
+const writeClipboard = async (text: string): Promise<boolean> => {
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch {
+        // fall through to the legacy execCommand path (e.g. non-secure contexts)
+    }
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    } catch {
+        return false;
+    }
+};
+
+const copyAll = async () => {
+    if (!(await writeClipboard(props.message.content ?? ''))) return;
+    copiedAll.value = true;
+    setTimeout(() => (copiedAll.value = false), 1500);
+};
+
+// Delegated handler for the per-code-block copy buttons useMarkdown injects.
+const onCopyCodeClick = async (event: MouseEvent) => {
+    const btn = (event.target as HTMLElement | null)?.closest('.copy-code-btn') as HTMLElement | null;
+    if (!btn) return;
+    const code = btn.closest('.code-block')?.querySelector('pre')?.textContent ?? '';
+    if (!(await writeClipboard(code))) return;
+    const icon = btn.querySelector('i');
+    if (icon) {
+        const previous = icon.className;
+        icon.className = 'mdi mdi-check';
+        btn.classList.add('copied');
+        setTimeout(() => {
+            icon.className = previous;
+            btn.classList.remove('copied');
+        }, 1500);
+    }
+};
+
 const formatTime = (date: Date): string => {
     return new Intl.DateTimeFormat('en-US', {
         hour: 'numeric',
@@ -204,6 +266,53 @@ const formatTime = (date: Date): string => {
     font-size: 0.7rem;
     color: var(--ha-secondary-text);
     margin-left: auto;
+}
+
+.chat-message__copy-all {
+    margin-left: 0.25rem;
+}
+
+/* Copy button injected into each rendered code block (see useMarkdown). Lives in v-html
+   output, so it must be styled without scoping via :deep(). */
+:deep(.code-block) {
+    position: relative;
+}
+
+:deep(.code-block .copy-code-btn) {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
+    border: 1px solid var(--ha-border);
+    border-radius: 6px;
+    background: var(--ha-card-background);
+    color: var(--ha-secondary-text);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+        opacity 0.15s ease,
+        color 0.15s ease;
+    font-size: 0.95rem;
+    line-height: 1;
+}
+
+:deep(.code-block:hover .copy-code-btn) {
+    opacity: 0.85;
+}
+
+:deep(.code-block .copy-code-btn:hover) {
+    opacity: 1;
+    color: var(--ha-primary-text);
+}
+
+:deep(.code-block .copy-code-btn.copied) {
+    opacity: 1;
+    color: rgb(var(--v-theme-success));
 }
 
 .chat-message__content {

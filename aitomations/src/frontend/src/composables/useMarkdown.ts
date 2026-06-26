@@ -27,6 +27,24 @@ export function useMarkdown() {
                 }
             });
 
+            // Wrap each code block and add a copy-to-clipboard button. The click is handled
+            // via event delegation in the component (the injected HTML isn't reactive).
+            div.querySelectorAll('pre').forEach((pre) => {
+                if (!pre.querySelector('code')) return;
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block';
+                pre.parentNode?.insertBefore(wrapper, pre);
+                wrapper.appendChild(pre);
+
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'copy-code-btn';
+                button.title = 'Copy to clipboard';
+                button.setAttribute('aria-label', 'Copy code to clipboard');
+                button.innerHTML = '<i class="mdi mdi-content-copy"></i>';
+                wrapper.appendChild(button);
+            });
+
             return div.innerHTML;
         } catch (error) {
             console.error('Markdown rendering failed:', error);
