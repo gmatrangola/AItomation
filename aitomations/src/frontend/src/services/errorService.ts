@@ -174,6 +174,19 @@ export class ErrorService {
             detailsLabel: 'Dashboard error',
         }),
 
+        HELPER_ERROR: (_ctx) => ({
+            icon: '🎛️',
+            title: 'Could not create the helper',
+            description: 'Home Assistant rejected the helper (input_*/timer/counter) creation request.',
+            steps: [
+                'Check the add-on logs for the WebSocket error details',
+                'Make sure the helper has a valid name and required fields',
+                'A helper with the same name may already exist',
+                'Try again in a few moments',
+            ],
+            detailsLabel: 'Helper error',
+        }),
+
         UNSUPPORTED_KIND: (ctx) => ({
             icon: '🚧',
             title: `Cannot apply '${ctx.kind}' directly`,

@@ -31,6 +31,9 @@ class ErrorCode(StrEnum):
     DASHBOARD_ERROR = "DASHBOARD_ERROR"
     DASHBOARD_READONLY = "DASHBOARD_READONLY"
 
+    # Helper (input_*/timer/counter) errors
+    HELPER_ERROR = "HELPER_ERROR"
+
     # Input validation
     INVALID_INPUT = "INVALID_INPUT"
     UNSUPPORTED_KIND = "UNSUPPORTED_KIND"

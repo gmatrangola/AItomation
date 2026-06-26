@@ -20,6 +20,7 @@ from api.config import (
 from api.context import get_ha_context
 from api.docs_cache import get_docs_reference
 from api.errors import APIError, ErrorCode
+from api.ha_ws import HelperClient
 from api.lovelace import LovelaceClient
 from api.options import get_options
 from api.prompting import render_system_prompt
@@ -427,13 +428,18 @@ def generate_automation_stream():
     )
 
 
-# Kinds that can be applied through the HA config REST API (POST /api/config/<kind>/config/<id>).
-# The kind value is the HA domain itself, so it slots straight into the endpoint URL. Helper
-# domains (input_*, timer, counter) use the same storage-backed config collection API.
-APPLY_KINDS = (
+# Kinds applied through the HA config REST API (POST /api/config/<kind>/config/<id>). Only these
+# three domains have REST config endpoints; the kind value slots straight into the URL.
+CONFIG_REST_KINDS = (
     "automation",
     "script",
     "scene",
+)
+
+# Helper domains are storage-collection entities with *no* REST config endpoint — POSTing to
+# /api/config/<domain>/config/<id> returns 404. They must be created over the WebSocket API
+# (<domain>/create) via HelperClient.
+HELPER_WS_KINDS = (
     "input_boolean",
     "input_number",
     "input_select",
@@ -444,6 +450,9 @@ APPLY_KINDS = (
     "counter",
 )
 
+# Full allow-list of applyable kinds, used for UNSUPPORTED_KIND checks.
+APPLY_KINDS = CONFIG_REST_KINDS + HELPER_WS_KINDS
+
 
 def _apply_config_entity(
     kind: str | None, entity_id: str | None, config_yaml: str, prompt: str | None = None
@@ -453,7 +462,7 @@ def _apply_config_entity(
     Returns a dict with at least an ``id`` key. Raises ``APIError`` for unsupported kinds
     or malformed YAML.
     """
-    if kind not in APPLY_KINDS:
+    if kind not in CONFIG_REST_KINDS:
         raise APIError(ErrorCode.UNSUPPORTED_KIND, {"kind": kind, "supported": list(APPLY_KINDS)})
 
     config = yaml.safe_load(config_yaml)
@@ -499,6 +508,24 @@ def _apply_config_entity(
     return result
 
 
+def _apply_helper(kind: str, config_yaml: str) -> dict[str, Any]:
+    """Create a helper (input_*/timer/counter) over the WebSocket storage-collection API.
+
+    Helpers have no REST config endpoint, so they can't go through ``_apply_config_entity``.
+    Returns a dict with at least an ``id`` key.
+    """
+    config = yaml.safe_load(config_yaml)
+    if isinstance(config, list):
+        config = config[0]
+    if not isinstance(config, dict):
+        raise APIError(ErrorCode.INVALID_INPUT, {"field": "yaml"})
+
+    with HelperClient() as client:
+        result = client.create_helper(kind, config)
+    result.setdefault("id", config.get("name"))
+    return result
+
+
 @api_blueprint.route("/install_automation", methods=["POST"])
 def install_automation():
     try:
@@ -522,7 +549,10 @@ def apply_entity():
         if not config_yaml:
             return jsonify({"error_code": "INVALID_INPUT", "context": {"field": "yaml"}}), 400
 
-        result = _apply_config_entity(kind, data.get("id"), config_yaml, data.get("prompt"))
+        if kind in HELPER_WS_KINDS:
+            result = _apply_helper(kind, config_yaml)
+        else:
+            result = _apply_config_entity(kind, data.get("id"), config_yaml, data.get("prompt"))
         current_app.logger.info("✅ Applied %s (id=%s)", kind, result.get("id"))
         return jsonify({"success": True, "kind": kind, "id": result.get("id")})
     except APIError as e:
