@@ -8,6 +8,3 @@ gunicorn
 zeroconf>=0.132.0
 websocket-client>=1.7.0
 packaging
-mypy
-types-requests
-types-PyYAML

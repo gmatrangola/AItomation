@@ -44,7 +44,7 @@ install: ## Install all dependencies
 	cd $(FRONTEND_DIR) && pnpm install
 	@echo "Installing backend dependencies..."
 	pip3 install --user -r $(ADDON_DIR)/requirements.txt
-	pip3 install --user pytest pytest-cov ruff mypy
+	pip3 install --user pytest pytest-cov ruff mypy types-requests types-PyYAML
 	@echo "✓ All dependencies installed"
 
 install-frontend: ## Install frontend dependencies only
