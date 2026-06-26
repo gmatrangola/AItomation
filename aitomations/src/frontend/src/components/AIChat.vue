@@ -6,7 +6,9 @@
                 <div class="empty-state">
                     <v-icon size="48" color="primary">mdi-chat-outline</v-icon>
                     <h3 class="mt-3">Start a Conversation</h3>
-                    <p class="text-secondary mt-2">Describe the automation you'd like to create</p>
+                    <p class="text-secondary mt-2">
+                        Describe what you'd like to create — automations, scripts, scenes, helpers, or dashboards
+                    </p>
                     <div class="example-prompts mt-4">
                         <v-chip
                             v-for="example in examplePrompts"
@@ -253,8 +255,8 @@ const isSending = ref(false); // Add local sending state
 const examplePrompts = [
     'Turn on lights at sunset',
     'Notify me when door opens',
+    'Add a Vacation Mode toggle',
     'Create a dashboard for the living room',
-    'Add a weather card to my dashboard',
 ];
 
 // Simple markdown renderer for streaming content

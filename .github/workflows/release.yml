@@ -248,7 +248,7 @@ jobs:
         run: |
           if [ -f aitomations/Changelog.md ]; then
             awk -v version="${{ needs.prepare-release.outputs.version }}" \
-                '/^## \['"$version"'\]/ { found=1; next } 
+                '$0 ~ ("^## \\[" version "\\]") { found=1; next }
                  /^## \[/ { if (found) exit }
                  found { print }' \
                 aitomations/Changelog.md > release_notes.md

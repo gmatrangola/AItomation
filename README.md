@@ -1,6 +1,6 @@
 # AItomations - Home Assistant Automation Creator
 
-Create Home Assistant automations using natural language! Describe what you want in plain English, and AItomations uses AI (Google Gemini or local Ollama) to generate the YAML configuration for you.
+Create Home Assistant automations, scripts, scenes, helpers, and dashboards using natural language! Describe what you want in plain English, and AItomations uses AI (Google Gemini or local Ollama) to generate the configuration for you — with one-click apply for each item it produces.
 
 This is the repository for the source code for the AITomations Home Assistant Add On. If you are looking to install and use the add on please go to [The installation repo](https://github.com/gmatrangola/aitomation-install)
 
@@ -11,12 +11,14 @@ The following information is for my reference and future contributors to the pro
 
 ## ✨ Features
 
-* **Natural Language Automation** - Just describe what you want in plain English
+* **Natural Language Creation** - Just describe what you want in plain English
+* **Many Artifact Types** - Generate automations, scripts, scenes, helpers (input_boolean, input_number, input_select, input_text, input_datetime, input_button, timer, counter), and Lovelace dashboards
+* **Multi-Artifact Responses** - A single request can produce several related items (e.g. a helper + the script that uses it + a dashboard button), each with its own one-click apply button, applied in dependency order
 * **Multiple LLM Providers** - Use Google Gemini (cloud) or Ollama (local)
-* **Context-Aware** - Automatically fetches your Home Assistant entities for accurate suggestions
-* **Conversational Interface** - Chat with the AI to refine your automation
+* **Context-Aware** - Automatically fetches your Home Assistant entities, areas, and services for accurate suggestions
+* **Conversational Interface** - Chat with the AI to refine your results
 * **Real-time Streaming** - See the AI's response as it's generated
-* **Review Before Install** - Preview the YAML and explanation before installing
+* **Review Before Install** - Preview the YAML and explanation before applying
 * **Modern UI** - Clean interface built with Vue 3 and Vuetify
 
 ## 📋 Table of Contents
