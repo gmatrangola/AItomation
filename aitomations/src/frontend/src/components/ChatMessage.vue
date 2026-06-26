@@ -18,24 +18,26 @@
                 {{ message.content }}
             </div>
 
-            <!-- Assistant messages - markdown with syntax highlighting -->
-            <div v-else class="markdown-content" v-html="renderMarkdown(message.content)"></div>
-
-            <!-- Per-artifact action buttons -->
-            <div v-if="messageArtifacts.length && showInstallButton" class="chat-message__actions mt-2">
-                <v-btn
-                    v-for="(artifact, i) in messageArtifacts"
-                    :key="i"
-                    :color="artifactColor(artifact.kind)"
-                    variant="elevated"
-                    size="small"
-                    class="mr-2"
-                    @click="$emit('apply-artifact', artifact)"
-                >
-                    <v-icon start size="small">{{ artifactIcon(artifact.kind) }}</v-icon>
-                    {{ artifactLabel(artifact.kind) }}
-                </v-btn>
-            </div>
+            <!-- Assistant messages - markdown with each artifact's apply button inline,
+                 directly after the YAML block it applies to -->
+            <template v-else>
+                <template v-for="(seg, i) in contentSegments" :key="i">
+                    <div v-if="seg.html" class="markdown-content" v-html="seg.html"></div>
+                    <div v-if="seg.artifacts.length && showInstallButton" class="chat-message__actions">
+                        <v-btn
+                            v-for="(artifact, j) in seg.artifacts"
+                            :key="j"
+                            :color="artifactColor(artifact.kind)"
+                            variant="elevated"
+                            size="small"
+                            @click="$emit('apply-artifact', artifact)"
+                        >
+                            <v-icon start size="small">{{ artifactIcon(artifact.kind) }}</v-icon>
+                            {{ artifactLabel(artifact.kind) }}
+                        </v-btn>
+                    </div>
+                </template>
+            </template>
         </div>
     </div>
 </template>
@@ -43,7 +45,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useMarkdown } from '@/composables/useMarkdown';
-import { HELPER_KINDS, type Artifact, type ArtifactKind, type ChatMessage } from '@/types/chat';
+import { ARTIFACT_KINDS, HELPER_KINDS, type Artifact, type ArtifactKind, type ChatMessage } from '@/types/chat';
 
 const { renderMarkdown } = useMarkdown();
 
@@ -67,6 +69,46 @@ const messageArtifacts = computed((): Artifact[] => {
         return [{ yaml: props.message.yaml, kind: props.message.artifactKind ?? 'automation' }];
     }
     return [];
+});
+
+// Split the assistant content so each artifact's apply button renders inline — right after the
+// YAML block it applies to — instead of every button being grouped at the end of the message.
+interface Segment {
+    html: string;
+    artifacts: Artifact[];
+}
+
+const contentSegments = computed((): Segment[] => {
+    const content = props.message.content ?? '';
+    const artifacts = messageArtifacts.value;
+    if (!artifacts.length) return [{ html: renderMarkdown(content), artifacts: [] }];
+
+    // End offset of each applyable YAML block, in document order (same scan as the extractor).
+    const regex = /```yaml\n([\s\S]*?)\n```/g;
+    const blockEnds: number[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+        const kindMatch = match[1].match(/#\s*aitomation_kind:\s*([a-z_]+)/i);
+        if (!kindMatch) continue;
+        if (!ARTIFACT_KINDS.includes(kindMatch[1].toLowerCase() as ArtifactKind)) continue;
+        blockEnds.push(regex.lastIndex);
+    }
+
+    // If blocks don't line up with the artifacts (legacy/partial/streaming), fall back to the old
+    // behavior: render everything, then all buttons grouped at the end.
+    if (blockEnds.length !== artifacts.length) {
+        return [{ html: renderMarkdown(content), artifacts }];
+    }
+
+    const segments: Segment[] = [];
+    let start = 0;
+    blockEnds.forEach((end, i) => {
+        segments.push({ html: renderMarkdown(content.slice(start, end)), artifacts: [artifacts[i]] });
+        start = end;
+    });
+    const tail = content.slice(start);
+    if (tail.trim()) segments.push({ html: renderMarkdown(tail), artifacts: [] });
+    return segments;
 });
 
 // Turn a helper domain like `input_boolean` into a friendly name like "Input Boolean".
@@ -192,7 +234,6 @@ const formatTime = (date: Date): string => {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--ha-border);
+    margin: 0.4rem 0 0.85rem;
 }
 </style>
