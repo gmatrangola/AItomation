@@ -54,3 +54,5 @@ HANDOFF.md
 
 # TypeScript incremental cache
 node_modules/.cache/
+# dev-deploy temporary backup of config.json (image field strip/restore)
+aitomations/config.json.imgbak

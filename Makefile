@@ -232,6 +232,13 @@ deploy-test: ## Deploy to test instance
 deploy-prod: ## Deploy to production instance
 	@$(MAKE) deploy TARGET=prod
 
+dev-deploy: ## Deploy to test from source: strips the release-only 'image' field, deploys, then restores it
+	@echo "🔧 dev-deploy: removing 'image' from config.json so HA builds from source (restored afterwards)..."
+	@cp $(ADDON_DIR)/config.json $(ADDON_DIR)/config.json.imgbak
+	@trap 'mv -f $(ADDON_DIR)/config.json.imgbak $(ADDON_DIR)/config.json && echo "↩️  Restored image field in config.json"' EXIT INT TERM; \
+	    jq 'del(.image)' $(ADDON_DIR)/config.json.imgbak > $(ADDON_DIR)/config.json; \
+	    $(MAKE) --no-print-directory deploy TARGET=$(TARGET)
+
 deploy-quick: ## Quick deploy without rebuild (use existing build)
 	@echo "Deploying without rebuild..."
 	@if [ ! -d "$(BUILD_DIR)" ]; then \
