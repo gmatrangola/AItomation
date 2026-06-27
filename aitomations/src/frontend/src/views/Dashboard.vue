@@ -26,7 +26,19 @@
         <!-- Error Banner - Top Level, Most Prominent -->
         <ErrorMessage v-if="currentError" :error="currentError" class="error-banner" @close="clearError" />
 
-        <!-- Compact Action Bar -->
+        <!-- Main Chat Area -->
+        <div class="chat-wrapper">
+            <AIChat
+                ref="chatRef"
+                v-model="prompt"
+                :disabled="!!configError"
+                :apply-fn="handleApplyArtifact"
+                @has-messages="hasMessages = $event"
+                @error="handleError"
+            />
+        </div>
+
+        <!-- Action bar: pinned at the bottom, below the prompt input -->
         <div class="action-bar">
             <v-btn variant="tonal" size="small" color="success" @click="handleDone">
                 <v-icon start size="small">mdi-check-circle-outline</v-icon>
@@ -45,18 +57,6 @@
                 </v-badge>
                 Automations
             </v-btn>
-        </div>
-
-        <!-- Main Chat Area -->
-        <div class="chat-wrapper">
-            <AIChat
-                ref="chatRef"
-                v-model="prompt"
-                :disabled="!!configError"
-                :apply-fn="handleApplyArtifact"
-                @has-messages="hasMessages = $event"
-                @error="handleError"
-            />
         </div>
 
         <!-- Automation List Drawer -->
@@ -419,8 +419,10 @@ onMounted(async () => {
 .dashboard {
     display: flex;
     flex-direction: column;
-    height: 100vh;
-    max-height: 100vh;
+    /* Fill the v-main content box (which is offset below the fixed app bar), not the full
+       viewport — otherwise the bottom action bar would be clipped. */
+    height: 100%;
+    max-height: 100%;
     overflow: hidden;
 }
 
@@ -441,7 +443,7 @@ onMounted(async () => {
     gap: 0.5rem;
     padding: 0.5rem 1rem;
     background: var(--ha-card-background);
-    border-bottom: 1px solid var(--ha-border);
+    border-top: 1px solid var(--ha-border);
     flex-shrink: 0;
     z-index: 10;
     height: 48px;

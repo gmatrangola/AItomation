@@ -44,6 +44,8 @@ All notable changes to this project will be documented in this file.
   so you can start fresh
 
 ### Fixed
+- Action bar (Done / Dashboards / Automations) was rendered behind the fixed top app
+  bar and invisible; moved it below the prompt and fixed the app-bar offset
 - Helpers (input_*/timer/counter) now apply correctly via the WebSocket
   storage-collection API; they were POSTing to a REST config endpoint that does
   not exist for helpers and failed with "404 Not Found"

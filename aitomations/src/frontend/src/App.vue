@@ -61,12 +61,14 @@ body,
 
 .main-container {
     height: 100vh;
-    padding: 0 !important;
+    /* Offset the fixed compact app bar (48px) so page content — including the Dashboard
+       action bar (Done / Dashboards / Automations) — isn't hidden behind it. */
+    padding: 48px 0 0 0 !important;
     overflow: hidden;
 }
 
 .main-container .v-main__wrap {
-    height: 100vh;
+    height: calc(100vh - 48px);
     overflow: hidden;
 }
 
