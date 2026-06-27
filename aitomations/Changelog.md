@@ -35,8 +35,10 @@ All notable changes to this project will be documented in this file.
 ## [1.1.1] - 2026-06-26
 
 ### Added
-- Copy-to-clipboard button on every code block, plus a button to copy the whole
-  assistant response, so you can save and share generated ideas
+- Copy-to-clipboard button on every code block, plus a "Copy Markdown" button at
+  the top of each response to copy the whole reply as Markdown
+- Per-artifact "Done" indicator after a component is applied, and an "Apply All"
+  button that applies every artifact in dependency order (stops on first failure)
 - Empty-state hint and examples now mention scripts, scenes, helpers, and dashboards
 
 ### Fixed

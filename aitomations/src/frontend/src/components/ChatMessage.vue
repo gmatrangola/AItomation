@@ -10,16 +10,6 @@
             <span class="chat-message__time">
                 {{ formatTime(message.timestamp) }}
             </span>
-            <v-btn
-                v-if="message.role === 'assistant' && message.content"
-                class="chat-message__copy-all"
-                :icon="copiedAll ? 'mdi-check' : 'mdi-content-copy'"
-                :color="copiedAll ? 'success' : undefined"
-                size="x-small"
-                variant="text"
-                :title="copiedAll ? 'Copied!' : 'Copy entire response'"
-                @click="copyAll"
-            />
         </div>
 
         <div class="chat-message__content">
@@ -32,46 +22,73 @@
                  directly after the YAML block it applies to. The @click delegates copy-code
                  buttons that useMarkdown injects into each code block. -->
             <div v-else @click="onCopyCodeClick">
+                <!-- Top-level: copy the entire response as Markdown -->
+                <div v-if="message.content" class="chat-message__md-toolbar">
+                    <v-btn
+                        size="x-small"
+                        variant="text"
+                        :color="copiedAll ? 'success' : undefined"
+                        :title="copiedAll ? 'Copied!' : 'Copy the entire response as Markdown'"
+                        @click="copyAll"
+                    >
+                        <v-icon start size="x-small">{{ copiedAll ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
+                        {{ copiedAll ? 'Copied' : 'Copy Markdown' }}
+                    </v-btn>
+                </div>
+
                 <template v-for="(seg, i) in contentSegments" :key="i">
                     <div v-if="seg.html" class="markdown-content" v-html="seg.html"></div>
-                    <div v-if="seg.artifacts.length && showInstallButton" class="chat-message__actions">
+                    <div v-if="seg.items.length && showInstallButton" class="chat-message__actions">
                         <v-btn
-                            v-for="(artifact, j) in seg.artifacts"
-                            :key="j"
-                            :color="artifactColor(artifact.kind)"
+                            v-for="item in seg.items"
+                            :key="item.index"
+                            :color="statusFor(item.index) === 'done' ? 'success' : artifactColor(item.artifact.kind)"
                             variant="elevated"
                             size="small"
-                            @click="$emit('apply-artifact', artifact)"
+                            :loading="statusFor(item.index) === 'applying'"
+                            :disabled="statusFor(item.index) === 'done' || applyingAll"
+                            @click="applyOne(item.index, item.artifact)"
                         >
-                            <v-icon start size="small">{{ artifactIcon(artifact.kind) }}</v-icon>
-                            {{ artifactLabel(artifact.kind) }}
+                            <v-icon start size="small">
+                                {{ statusFor(item.index) === 'done' ? 'mdi-check' : artifactIcon(item.artifact.kind) }}
+                            </v-icon>
+                            {{ buttonLabel(item.index, item.artifact.kind) }}
                         </v-btn>
                     </div>
                 </template>
+
+                <!-- Apply all remaining artifacts in dependency order -->
+                <div v-if="showApplyAll" class="chat-message__apply-all">
+                    <v-btn color="primary" variant="tonal" size="small" :loading="applyingAll" @click="applyAll">
+                        <v-icon start size="small">mdi-checkbox-multiple-marked-outline</v-icon>
+                        Apply All
+                    </v-btn>
+                </div>
             </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { useMarkdown } from '@/composables/useMarkdown';
 import { ARTIFACT_KINDS, HELPER_KINDS, type Artifact, type ArtifactKind, type ChatMessage } from '@/types/chat';
 
 const { renderMarkdown } = useMarkdown();
 
+type ApplyStatus = 'idle' | 'applying' | 'done' | 'error';
+
 interface Props {
     message: ChatMessage;
     showInstallButton?: boolean;
+    // Applies an artifact and resolves true on success (provided by the parent view).
+    applyFn?: (artifact: Artifact) => Promise<boolean>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     showInstallButton: true,
+    applyFn: undefined,
 });
-
-defineEmits<{
-    'apply-artifact': [artifact: Artifact];
-}>();
 
 // Normalize to Artifact[] — supports new messages (artifacts[]) and legacy (yaml/artifactKind)
 const messageArtifacts = computed((): Artifact[] => {
@@ -84,15 +101,21 @@ const messageArtifacts = computed((): Artifact[] => {
 
 // Split the assistant content so each artifact's apply button renders inline — right after the
 // YAML block it applies to — instead of every button being grouped at the end of the message.
+// `index` is the artifact's position in messageArtifacts, used to key its apply status.
+interface ArtifactItem {
+    artifact: Artifact;
+    index: number;
+}
 interface Segment {
     html: string;
-    artifacts: Artifact[];
+    items: ArtifactItem[];
 }
 
 const contentSegments = computed((): Segment[] => {
     const content = props.message.content ?? '';
     const artifacts = messageArtifacts.value;
-    if (!artifacts.length) return [{ html: renderMarkdown(content), artifacts: [] }];
+    const allItems = artifacts.map((artifact, index) => ({ artifact, index }));
+    if (!artifacts.length) return [{ html: renderMarkdown(content), items: [] }];
 
     // End offset of each applyable YAML block, in document order (same scan as the extractor).
     const regex = /```yaml\n([\s\S]*?)\n```/g;
@@ -108,19 +131,68 @@ const contentSegments = computed((): Segment[] => {
     // If blocks don't line up with the artifacts (legacy/partial/streaming), fall back to the old
     // behavior: render everything, then all buttons grouped at the end.
     if (blockEnds.length !== artifacts.length) {
-        return [{ html: renderMarkdown(content), artifacts }];
+        return [{ html: renderMarkdown(content), items: allItems }];
     }
 
     const segments: Segment[] = [];
     let start = 0;
     blockEnds.forEach((end, i) => {
-        segments.push({ html: renderMarkdown(content.slice(start, end)), artifacts: [artifacts[i]] });
+        segments.push({ html: renderMarkdown(content.slice(start, end)), items: [allItems[i]] });
         start = end;
     });
     const tail = content.slice(start);
-    if (tail.trim()) segments.push({ html: renderMarkdown(tail), artifacts: [] });
+    if (tail.trim()) segments.push({ html: renderMarkdown(tail), items: [] });
     return segments;
 });
+
+// --- per-artifact apply status + Apply All ---
+const statuses = reactive<Record<number, ApplyStatus>>({});
+const applyingAll = ref(false);
+
+const statusFor = (index: number): ApplyStatus => statuses[index] ?? 'idle';
+
+const buttonLabel = (index: number, kind: ArtifactKind): string => {
+    const status = statusFor(index);
+    if (status === 'done') return 'Done';
+    if (status === 'error') return 'Retry';
+    return artifactLabel(kind);
+};
+
+const applyOne = async (index: number, artifact: Artifact): Promise<boolean> => {
+    if (!props.applyFn || statusFor(index) === 'applying' || statusFor(index) === 'done') {
+        return statusFor(index) === 'done';
+    }
+    statuses[index] = 'applying';
+    try {
+        const ok = await props.applyFn(artifact);
+        statuses[index] = ok ? 'done' : 'error';
+        return ok;
+    } catch {
+        statuses[index] = 'error';
+        return false;
+    }
+};
+
+const allApplied = computed(
+    () => messageArtifacts.value.length > 0 && messageArtifacts.value.every((_, i) => statusFor(i) === 'done')
+);
+
+const showApplyAll = computed(() => props.showInstallButton && messageArtifacts.value.length > 1 && !allApplied.value);
+
+const applyAll = async () => {
+    if (applyingAll.value) return;
+    applyingAll.value = true;
+    try {
+        // Apply in dependency order; stop on the first failure so dependents aren't applied broken.
+        for (let i = 0; i < messageArtifacts.value.length; i++) {
+            if (statusFor(i) === 'done') continue;
+            const ok = await applyOne(i, messageArtifacts.value[i]);
+            if (!ok) break;
+        }
+    } finally {
+        applyingAll.value = false;
+    }
+};
 
 // Turn a helper domain like `input_boolean` into a friendly name like "Input Boolean".
 const prettyKind = (kind: ArtifactKind): string =>
@@ -268,8 +340,16 @@ const formatTime = (date: Date): string => {
     margin-left: auto;
 }
 
-.chat-message__copy-all {
-    margin-left: 0.25rem;
+/* Top-of-response "Copy Markdown" toolbar */
+.chat-message__md-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.15rem;
+}
+
+/* "Apply All" sits below the last artifact button */
+.chat-message__apply-all {
+    margin-top: 0.6rem;
 }
 
 /* Copy button injected into each rendered code block (see useMarkdown). Lives in v-html

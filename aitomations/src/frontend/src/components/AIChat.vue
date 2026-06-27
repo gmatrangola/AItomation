@@ -29,7 +29,7 @@
                     :key="message.id"
                     :message="message"
                     :show-install-button="message.id === lastArtifactMessageId"
-                    @apply-artifact="handleApplyArtifact"
+                    :apply-fn="applyFn"
                 />
 
                 <!-- Connecting State - Show immediately while waiting for backend -->
@@ -235,14 +235,17 @@ const lastArtifactMessageId = computed(() => {
 
 interface Props {
     modelValue?: string;
+    // Applies an artifact and resolves true on success (passed down to ChatMessage so it can
+    // show per-artifact status and an "Apply All" button).
+    applyFn?: (artifact: Artifact) => Promise<boolean>;
 }
 
 const props = withDefaults(defineProps<Props>(), {
     modelValue: '',
+    applyFn: undefined,
 });
 
 const emit = defineEmits<{
-    'apply-artifact': [artifact: Artifact];
     'update:modelValue': [value: string];
     'has-messages': [hasMessages: boolean];
     error: [error: APIError];
@@ -336,10 +339,6 @@ const handleNewLine = () => {
 const selectExample = (example: string) => {
     internalPrompt.value = example;
     handleSend();
-};
-
-const handleApplyArtifact = (artifact: Artifact) => {
-    emit('apply-artifact', artifact);
 };
 
 // Expose clearChat for parent component

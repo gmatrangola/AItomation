@@ -53,7 +53,7 @@
                 ref="chatRef"
                 v-model="prompt"
                 :disabled="!!configError"
-                @apply-artifact="handleApplyArtifact"
+                :apply-fn="handleApplyArtifact"
                 @has-messages="hasMessages = $event"
                 @error="handleError"
             />
@@ -259,23 +259,21 @@ const handleClearChat = async () => {
     }
 };
 
-const handleApplyArtifact = async (artifact: Artifact) => {
+// Returns true on success so the chat UI can mark the artifact applied.
+const handleApplyArtifact = async (artifact: Artifact): Promise<boolean> => {
     switch (artifact.kind) {
         case 'automation':
-            await handleInstallAutomation(artifact.yaml);
-            break;
+            return handleInstallAutomation(artifact.yaml);
         case 'dashboard':
-            await handleApplyDashboard(artifact.yaml);
-            break;
+            return handleApplyDashboard(artifact.yaml);
         default:
-            // script, scene, and helper kinds (input_*, timer, counter) all apply
-            // through the generic /apply_entity config endpoint.
-            await handleApplyEntity(artifact);
-            break;
+            // script, scene, and helper kinds (input_*, timer, counter) apply through
+            // /apply_entity (helpers go to the WebSocket path on the backend).
+            return handleApplyEntity(artifact);
     }
 };
 
-const handleApplyEntity = async (artifact: Artifact) => {
+const handleApplyEntity = async (artifact: Artifact): Promise<boolean> => {
     const result = await entityService.applyEntity(artifact, prompt.value);
 
     if (!result.success) {
@@ -283,7 +281,7 @@ const handleApplyEntity = async (artifact: Artifact) => {
             error_code: result.error_code || 'UNKNOWN_ERROR',
             context: { details: result.error || `Failed to apply ${artifact.kind}` },
         };
-        return;
+        return false;
     }
 
     currentError.value = null;
@@ -293,9 +291,10 @@ const handleApplyEntity = async (artifact: Artifact) => {
         .join(' ');
     entitySnackbarText.value = `${label} installed successfully!`;
     showEntitySnackbar.value = true;
+    return true;
 };
 
-const handleInstallAutomation = async (yaml: string) => {
+const handleInstallAutomation = async (yaml: string): Promise<boolean> => {
     try {
         const response = await fetch('api/install_automation', {
             method: 'POST',
@@ -314,6 +313,7 @@ const handleInstallAutomation = async (yaml: string) => {
         await fetchAutomations();
         showSuccessSnackbar.value = true;
         currentError.value = null;
+        return true;
     } catch (error) {
         console.error('Failed to install automation:', error);
         currentError.value = {
@@ -322,6 +322,7 @@ const handleInstallAutomation = async (yaml: string) => {
                 details: error instanceof Error ? error.message : 'Failed to install automation',
             },
         };
+        return false;
     }
 };
 
@@ -339,7 +340,7 @@ const dashboardUrl = (urlPath: string | null | undefined): string => {
     return urlPath ? `/${urlPath}` : '/lovelace';
 };
 
-const handleApplyDashboard = async (yaml: string) => {
+const handleApplyDashboard = async (yaml: string): Promise<boolean> => {
     // The model marks the target dashboard with `# aitomation_url_path: <slug>` when
     // modifying or naming a dashboard. Without it we always create a new dashboard so we
     // never clobber the user's default dashboard.
@@ -358,13 +359,14 @@ const handleApplyDashboard = async (yaml: string) => {
             error_code: result.error_code || 'UNKNOWN_ERROR',
             context: { details: result.error || 'Failed to apply dashboard' },
         };
-        return;
+        return false;
     }
 
     currentError.value = null;
     dashboardLink.value = dashboardUrl(result.url_path);
     showDashboardSnackbar.value = true;
     await fetchDashboards();
+    return true;
 };
 
 const fetchDashboards = async () => {
