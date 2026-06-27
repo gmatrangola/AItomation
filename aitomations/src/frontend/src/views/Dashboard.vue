@@ -28,9 +28,9 @@
 
         <!-- Compact Action Bar -->
         <div class="action-bar">
-            <v-btn v-if="hasMessages" variant="text" size="small" color="error" @click="handleClearChat">
-                <v-icon start size="small">mdi-delete</v-icon>
-                Clear
+            <v-btn variant="tonal" size="small" color="success" @click="handleDone">
+                <v-icon start size="small">mdi-check-circle-outline</v-icon>
+                Done
             </v-btn>
             <v-spacer />
             <v-btn variant="tonal" size="small" color="primary" class="mr-2" @click="openDashboards">
@@ -249,14 +249,15 @@ const clearError = () => {
     currentError.value = null;
 };
 
-const handleClearChat = async () => {
-    if (confirm('Clear chat history?')) {
-        if (chatRef.value) {
-            await chatRef.value.clearChat();
-            prompt.value = '';
-            currentError.value = null; // Clear any errors when clearing chat
-        }
+// Finish the current conversation: clear the prompt, the responses, and server history
+// so the user can start fresh.
+const handleDone = async () => {
+    if (!confirm('Done with this conversation? This clears the chat and starts a new one.')) return;
+    if (chatRef.value) {
+        await chatRef.value.clearChat();
     }
+    prompt.value = '';
+    currentError.value = null;
 };
 
 // Returns true on success so the chat UI can mark the artifact applied.

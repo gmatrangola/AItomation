@@ -40,6 +40,8 @@ All notable changes to this project will be documented in this file.
 - Per-artifact "Done" indicator after a component is applied, and an "Apply All"
   button that applies every artifact in dependency order (stops on first failure)
 - Empty-state hint and examples now mention scripts, scenes, helpers, and dashboards
+- "Done" button to finish a conversation — clears the prompt, responses, and history
+  so you can start fresh
 
 ### Fixed
 - Helpers (input_*/timer/counter) now apply correctly via the WebSocket
