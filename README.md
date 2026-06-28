@@ -6,7 +6,7 @@ This is the repository for the source code for the AITomations Home Assistant Ad
 
 The following information is for my reference and future contributors to the project. It might also serve as an example for efficently building Home Assistant Add Ons with a user interface and back end.
 
-![Version](https://img.shields.io/badge/version-1.1.1-blue)
+![Version](https://img.shields.io/badge/version-1.1.2-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## ✨ Features
@@ -14,6 +14,9 @@ The following information is for my reference and future contributors to the pro
 * **Natural Language Creation** - Just describe what you want in plain English
 * **Many Artifact Types** - Generate automations, scripts, scenes, helpers (input_boolean, input_number, input_select, input_text, input_datetime, input_button, timer, counter), and Lovelace dashboards
 * **Multi-Artifact Responses** - A single request can produce several related items (e.g. a helper + the script that uses it + a dashboard button), each with its own one-click apply button, applied in dependency order
+* **One-Click Apply with Status** - Apply each item individually (with a "Done" indicator) or use "Apply All" to apply everything in dependency order
+* **Browse Your Setup** - Drawers list your existing Helpers, Dashboards, and Automations, with a shortcut to ask the AI to modify any of them
+* **Copy & Share** - Copy any code block, or the entire response as Markdown, to save and share ideas
 * **Multiple LLM Providers** - Use Google Gemini (cloud) or Ollama (local)
 * **Context-Aware** - Automatically fetches your Home Assistant entities, areas, and services for accurate suggestions
 * **Conversational Interface** - Chat with the AI to refine your results
