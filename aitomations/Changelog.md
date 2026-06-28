@@ -32,6 +32,16 @@ All notable changes to this project will be documented in this file.
 - Build stamp on the Configuration page (version, git commit, and build time)
   so you can tell which build is running
 
+## [1.1.3] - 2026-06-28
+
+### Fixed
+- Applying an artifact whose generated YAML is malformed now shows a clear
+  "couldn't be parsed" message with the offending line, instead of a generic
+  "unexpected error"
+- Copy buttons (per-code-block and "Copy Markdown") now work in the Home Assistant
+  companion apps' webview, which lacks the secure-context clipboard API; the copy
+  button also shows a "Copy failed" state if the platform blocks clipboard access
+
 ## [1.1.2] - 2026-06-28
 
 ### Added
