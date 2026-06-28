@@ -25,6 +25,7 @@
                 <!-- Top-level: copy the entire response as Markdown -->
                 <div v-if="message.content" class="chat-message__md-toolbar">
                     <v-btn
+                        class="chat-message__copy-md"
                         size="x-small"
                         variant="text"
                         :color="copiedAll ? 'success' : copyFailed ? 'error' : undefined"
@@ -366,6 +367,13 @@ const formatTime = (date: Date): string => {
     display: flex;
     justify-content: flex-end;
     margin-bottom: 0.15rem;
+}
+
+/* The button is variant="text" with no color in the default (idle) state, so Vuetify's
+   light-theme near-black text was invisible on the dark HA card. Force the HA secondary-text
+   color when idle; the success/error color props still win in those states. */
+.chat-message__copy-md:not(.text-success):not(.text-error) {
+    color: var(--ha-secondary-text) !important;
 }
 
 /* "Apply All" sits below the last artifact button */
