@@ -27,12 +27,14 @@
                     <v-btn
                         size="x-small"
                         variant="text"
-                        :color="copiedAll ? 'success' : undefined"
+                        :color="copiedAll ? 'success' : copyFailed ? 'error' : undefined"
                         :title="copiedAll ? 'Copied!' : 'Copy the entire response as Markdown'"
                         @click="copyAll"
                     >
-                        <v-icon start size="x-small">{{ copiedAll ? 'mdi-check' : 'mdi-content-copy' }}</v-icon>
-                        {{ copiedAll ? 'Copied' : 'Copy Markdown' }}
+                        <v-icon start size="x-small">
+                            {{ copiedAll ? 'mdi-check' : copyFailed ? 'mdi-alert-circle-outline' : 'mdi-content-copy' }}
+                        </v-icon>
+                        {{ copiedAll ? 'Copied' : copyFailed ? 'Copy failed' : 'Copy Markdown' }}
                     </v-btn>
                 </div>
 
@@ -247,21 +249,34 @@ const artifactColor = (kind: ArtifactKind): string => {
 const copiedAll = ref(false);
 
 const writeClipboard = async (text: string): Promise<boolean> => {
+    // navigator.clipboard only exists in secure contexts; the HA companion apps serve the
+    // ingress UI over plain http, so it's usually undefined there — fall back to execCommand.
     try {
-        if (navigator.clipboard?.writeText) {
+        if (window.isSecureContext && navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(text);
             return true;
         }
     } catch {
-        // fall through to the legacy execCommand path (e.g. non-secure contexts)
+        // fall through to the legacy execCommand path
     }
     try {
         const ta = document.createElement('textarea');
         ta.value = text;
+        ta.setAttribute('readonly', '');
+        // Keep it in the viewport but visually hidden — offscreen/opacity:0 elements can't be
+        // selected for copy in some webviews (e.g. the macOS HA app).
         ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '0';
+        ta.style.width = '1px';
+        ta.style.height = '1px';
+        ta.style.padding = '0';
+        ta.style.border = 'none';
         ta.style.opacity = '0';
         document.body.appendChild(ta);
+        ta.focus();
         ta.select();
+        ta.setSelectionRange(0, text.length);
         const ok = document.execCommand('copy');
         document.body.removeChild(ta);
         return ok;
@@ -270,10 +285,16 @@ const writeClipboard = async (text: string): Promise<boolean> => {
     }
 };
 
+const copyFailed = ref(false);
+
 const copyAll = async () => {
-    if (!(await writeClipboard(props.message.content ?? ''))) return;
-    copiedAll.value = true;
-    setTimeout(() => (copiedAll.value = false), 1500);
+    if (await writeClipboard(props.message.content ?? '')) {
+        copiedAll.value = true;
+        setTimeout(() => (copiedAll.value = false), 1500);
+    } else {
+        copyFailed.value = true;
+        setTimeout(() => (copyFailed.value = false), 2500);
+    }
 };
 
 // Delegated handler for the per-code-block copy buttons useMarkdown injects.
