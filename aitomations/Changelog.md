@@ -32,7 +32,7 @@ All notable changes to this project will be documented in this file.
 - Build stamp on the Configuration page (version, git commit, and build time)
   so you can tell which build is running
 
-## [1.1.1] - 2026-06-26
+## [1.1.1] - 2026-06-28
 
 ### Added
 - Copy-to-clipboard button on every code block, plus a "Copy Markdown" button at
