@@ -36,6 +36,7 @@ class ErrorCode(StrEnum):
 
     # Input validation
     INVALID_INPUT = "INVALID_INPUT"
+    INVALID_YAML = "INVALID_YAML"
     UNSUPPORTED_KIND = "UNSUPPORTED_KIND"
 
     # Generic

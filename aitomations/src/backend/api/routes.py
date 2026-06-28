@@ -485,6 +485,25 @@ HELPER_WS_KINDS = (
 APPLY_KINDS = CONFIG_REST_KINDS + HELPER_WS_KINDS
 
 
+def _parse_artifact_yaml(config_yaml: str) -> dict[str, Any]:
+    """Parse generated YAML into a config dict, with clean errors for malformed YAML.
+
+    The LLM occasionally emits YAML with bad indentation; surface that as a readable
+    ``INVALID_YAML`` error (with the parser's line/column) instead of an unhandled 500.
+    """
+    try:
+        config = yaml.safe_load(config_yaml)
+    except yaml.YAMLError as exc:
+        # yaml's error message includes the line/column of the problem; pass it through.
+        raise APIError(ErrorCode.INVALID_YAML, {"details": str(exc)}) from exc
+
+    if isinstance(config, list):
+        config = config[0] if config else None
+    if not isinstance(config, dict):
+        raise APIError(ErrorCode.INVALID_INPUT, {"field": "yaml"})
+    return config
+
+
 def _apply_config_entity(
     kind: str | None, entity_id: str | None, config_yaml: str, prompt: str | None = None
 ) -> dict[str, Any]:
@@ -496,11 +515,7 @@ def _apply_config_entity(
     if kind not in CONFIG_REST_KINDS:
         raise APIError(ErrorCode.UNSUPPORTED_KIND, {"kind": kind, "supported": list(APPLY_KINDS)})
 
-    config = yaml.safe_load(config_yaml)
-    if isinstance(config, list):
-        config = config[0]
-    if not isinstance(config, dict):
-        raise APIError(ErrorCode.INVALID_INPUT, {"field": "yaml"})
+    config = _parse_artifact_yaml(config_yaml)
 
     # Attach provenance metadata so the automation list view can surface the originating
     # prompt. HA stores arbitrary keys for automations; scripts/scenes validate against a
@@ -545,11 +560,7 @@ def _apply_helper(kind: str, config_yaml: str) -> dict[str, Any]:
     Helpers have no REST config endpoint, so they can't go through ``_apply_config_entity``.
     Returns a dict with at least an ``id`` key.
     """
-    config = yaml.safe_load(config_yaml)
-    if isinstance(config, list):
-        config = config[0]
-    if not isinstance(config, dict):
-        raise APIError(ErrorCode.INVALID_INPUT, {"field": "yaml"})
+    config = _parse_artifact_yaml(config_yaml)
 
     with HelperClient() as client:
         result = client.create_helper(kind, config)
@@ -564,6 +575,10 @@ def install_automation():
         automation_yaml = data["automation_yaml"]
         result = _apply_config_entity("automation", None, automation_yaml, data.get("prompt"))
         return jsonify(result)
+    except APIError as e:
+        current_app.logger.error("❌ install_automation APIError: %s %s", e.code.value, e.context)
+        status = 400 if e.code in (ErrorCode.UNSUPPORTED_KIND, ErrorCode.INVALID_INPUT, ErrorCode.INVALID_YAML) else 502
+        return jsonify({"error_code": e.code.value, "context": e.context}), status
     except Exception as e:
         current_app.logger.error(f"❌ Error in install_automation: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -588,7 +603,7 @@ def apply_entity():
         return jsonify({"success": True, "kind": kind, "id": result.get("id")})
     except APIError as e:
         current_app.logger.error("❌ apply_entity APIError: %s %s", e.code.value, e.context)
-        status = 400 if e.code in (ErrorCode.UNSUPPORTED_KIND, ErrorCode.INVALID_INPUT) else 502
+        status = 400 if e.code in (ErrorCode.UNSUPPORTED_KIND, ErrorCode.INVALID_INPUT, ErrorCode.INVALID_YAML) else 502
         return jsonify({"error_code": e.code.value, "context": e.context}), status
     except Exception as e:  # noqa: BLE001
         current_app.logger.error("❌ Error in apply_entity: %s", e)

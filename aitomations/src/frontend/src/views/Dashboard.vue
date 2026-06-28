@@ -375,6 +375,11 @@ const handleInstallAutomation = async (yaml: string): Promise<boolean> => {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            // Prefer the structured error code (e.g. INVALID_YAML) so the user gets a clear message.
+            if (errorData.error_code) {
+                currentError.value = { error_code: errorData.error_code, context: errorData.context || {} };
+                return false;
+            }
             throw new Error(errorData.error || errorData.detail || 'Failed to install automation');
         }
 

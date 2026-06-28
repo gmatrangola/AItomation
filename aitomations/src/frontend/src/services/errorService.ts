@@ -149,6 +149,18 @@ export class ErrorService {
             steps: ['Please provide a valid prompt and try again'],
         }),
 
+        INVALID_YAML: (_ctx) => ({
+            icon: '📐',
+            title: "The generated YAML couldn't be parsed",
+            description: 'The AI produced YAML with invalid formatting, so it could not be applied.',
+            steps: [
+                'Ask the AI to "fix the YAML formatting and try again"',
+                'Or copy the YAML, correct the indentation noted below, and apply it manually',
+                'Regenerating the response often resolves it',
+            ],
+            detailsLabel: 'YAML parser error',
+        }),
+
         DASHBOARD_ERROR: (_ctx) => ({
             icon: '📊',
             title: 'Dashboard operation failed',
