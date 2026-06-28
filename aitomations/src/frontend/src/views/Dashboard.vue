@@ -45,6 +45,12 @@
                 Done
             </v-btn>
             <v-spacer />
+            <v-btn variant="tonal" size="small" color="primary" class="mr-2" @click="openHelpers">
+                <v-badge :content="helpers.length" :model-value="helpers.length > 0" color="success" inline>
+                    <v-icon start size="small">mdi-tune-variant</v-icon>
+                </v-badge>
+                Helpers
+            </v-btn>
             <v-btn variant="tonal" size="small" color="primary" class="mr-2" @click="openDashboards">
                 <v-badge :content="dashboards.length" :model-value="dashboards.length > 0" color="success" inline>
                     <v-icon start size="small">mdi-view-dashboard-outline</v-icon>
@@ -164,6 +170,52 @@
             </v-list>
         </v-navigation-drawer>
 
+        <!-- Helpers Drawer -->
+        <v-navigation-drawer v-model="helperDrawer" location="right" temporary width="400">
+            <template #prepend>
+                <div class="drawer-header">
+                    <div class="drawer-title">
+                        <v-icon size="small" class="mr-2">mdi-tune-variant</v-icon>
+                        <span>Helpers</span>
+                    </div>
+                    <v-btn icon variant="text" size="x-small" @click="helperDrawer = false">
+                        <v-icon size="small">mdi-close</v-icon>
+                    </v-btn>
+                </div>
+                <v-divider />
+            </template>
+
+            <v-list density="compact">
+                <v-list-item v-if="helpersLoading">
+                    <v-progress-circular indeterminate color="primary" size="20" />
+                    <span class="ml-3 text-caption">Loading...</span>
+                </v-list-item>
+
+                <v-list-item v-else-if="helpers.length === 0">
+                    <v-list-item-title class="text-secondary text-caption"> No helpers found </v-list-item-title>
+                </v-list-item>
+
+                <v-list-item v-for="helper in helpers" :key="helper.entity_id" class="automation-item">
+                    <template #prepend>
+                        <v-avatar color="info" size="28">
+                            <v-icon size="x-small" color="white">mdi-tune-variant</v-icon>
+                        </v-avatar>
+                    </template>
+
+                    <v-list-item-title class="text-body-2">{{ helper.name }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-caption">
+                        {{ helper.entity_id }} · {{ prettyHelperDomain(helper.domain) }}
+                    </v-list-item-subtitle>
+
+                    <template #append>
+                        <v-btn size="x-small" color="primary" variant="text" icon @click="handleEditHelper(helper)">
+                            <v-icon size="small">mdi-pencil</v-icon>
+                        </v-btn>
+                    </template>
+                </v-list-item>
+            </v-list>
+        </v-navigation-drawer>
+
         <!-- Success Snackbar -->
         <v-snackbar v-model="showSuccessSnackbar" color="success" :timeout="3000" location="top">
             <v-icon start>mdi-check-circle</v-icon>
@@ -207,6 +259,13 @@ interface Automation {
     is_editable: boolean;
 }
 
+interface Helper {
+    entity_id: string;
+    domain: string;
+    name: string;
+    state: string;
+}
+
 const loading = ref(true);
 const automations = ref<Automation[]>([]);
 const drawer = ref(false);
@@ -225,6 +284,10 @@ const dashboardDrawer = ref(false);
 const dashboardsLoading = ref(false);
 const showDashboardSnackbar = ref(false);
 const dashboardLink = ref<string | null>(null);
+
+const helpers = ref<Helper[]>([]);
+const helperDrawer = ref(false);
+const helpersLoading = ref(false);
 
 const checkConfiguration = async () => {
     const result = await configService.checkConfiguration();
@@ -292,6 +355,10 @@ const handleApplyEntity = async (artifact: Artifact): Promise<boolean> => {
         .join(' ');
     entitySnackbarText.value = `${label} installed successfully!`;
     showEntitySnackbar.value = true;
+    // Refresh the Helpers list/badge when a helper was just created.
+    if (artifact.kind.startsWith('input_') || artifact.kind === 'timer' || artifact.kind === 'counter') {
+        await fetchHelpers();
+    }
     return true;
 };
 
@@ -390,6 +457,36 @@ const openDashboards = async () => {
     await fetchDashboards();
 };
 
+// Turn a helper domain like `input_boolean` into a friendly name like "Input Boolean".
+const prettyHelperDomain = (domain: string): string =>
+    domain
+        .split('_')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+
+const fetchHelpers = async () => {
+    helpersLoading.value = true;
+    try {
+        const response = await fetch('api/helpers');
+        if (!response.ok) throw new Error('Failed to fetch helpers');
+        helpers.value = await response.json();
+    } catch (error) {
+        console.error('Failed to fetch helpers:', error);
+    } finally {
+        helpersLoading.value = false;
+    }
+};
+
+const openHelpers = async () => {
+    helperDrawer.value = true;
+    await fetchHelpers();
+};
+
+const handleEditHelper = (helper: Helper) => {
+    helperDrawer.value = false;
+    prompt.value = `Modify the "${helper.name}" helper (${helper.entity_id}): `;
+};
+
 const fetchAutomations = async () => {
     loading.value = true;
     try {
@@ -412,6 +509,7 @@ onMounted(async () => {
     await checkConfiguration();
     await fetchAutomations();
     await fetchDashboards();
+    await fetchHelpers();
 });
 </script>
 

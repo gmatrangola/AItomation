@@ -186,6 +186,37 @@ def get_automations():
         return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
 
 
+@api_blueprint.route("/helpers")
+def get_helpers():
+    """List existing helper entities (input_*/timer/counter) from HA state."""
+    if not SUPERVISOR_TOKEN:
+        return jsonify({"error": "Supervisor token not found"}), 500
+    try:
+        states_response = requests.get(f"{HA_API_URL}/states", headers=HA_HEADERS, timeout=15)
+        states_response.raise_for_status()
+
+        helpers = []
+        for entity in states_response.json():
+            entity_id = entity["entity_id"]
+            domain = entity_id.split(".", 1)[0]
+            if domain not in HELPER_WS_KINDS:
+                continue
+            object_id = entity_id.split(".", 1)[1]
+            helpers.append(
+                {
+                    "entity_id": entity_id,
+                    "domain": domain,
+                    "name": entity["attributes"].get("friendly_name", object_id.replace("_", " ").title()),
+                    "state": entity["state"],
+                }
+            )
+        helpers.sort(key=lambda h: (h["domain"], h["name"].lower()))
+        return jsonify(helpers)
+    except Exception as e:
+        current_app.logger.error(f"❌ An unexpected error occurred in get_helpers: {e}")
+        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+
+
 # Chat history endpoints
 @api_blueprint.route("/chat/history", methods=["GET"])
 def load_chat_history():

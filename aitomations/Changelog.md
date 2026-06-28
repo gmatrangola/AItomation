@@ -42,6 +42,8 @@ All notable changes to this project will be documented in this file.
 - Empty-state hint and examples now mention scripts, scenes, helpers, and dashboards
 - "Done" button to finish a conversation — clears the prompt, responses, and history
   so you can start fresh
+- "Helpers" button in the action bar opens a drawer listing existing helper entities
+  (input_*/timer/counter), mirroring the Dashboards and Automations drawers
 
 ### Fixed
 - Action bar (Done / Dashboards / Automations) was rendered behind the fixed top app
